@@ -216,3 +216,10 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Custom Project Additions
+*.db
+*.sqlite3
+sima_drishti.db
+.vscode/
+.idea/
