@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from typing import List
 from datetime import datetime
 import json
+import uvicorn
 
 from app.database import Base, engine, get_db
 from app.models import AlertLog
@@ -65,7 +66,6 @@ async def receive_detection(payload: DetectionPayload, db: Session = Depends(get
     is_confirmed, reason = fusion_engine.process(payload)
 
     if is_confirmed:
-        # Save to SQLite
         new_alert = AlertLog(
             object_class=payload.object_class,
             zone="Sector_Alpha",
@@ -79,10 +79,8 @@ async def receive_detection(payload: DetectionPayload, db: Session = Depends(get
         db.commit()
         db.refresh(new_alert)
 
-        # Trigger Physical Hardware
         hardware_bridge.trigger_alert()
 
-        # Push payload to UI via WebSocket matching contract
         alert_data = {
             "alert_id": new_alert.id,
             "object_class": new_alert.object_class,
@@ -112,3 +110,6 @@ def get_alerts(skip: int = 0, limit: int = 50, db: Session = Depends(get_db)):
             timestamp=a.timestamp.isoformat()
         ) for a in alerts
     ]
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="127.0.0.1", port=8000)
