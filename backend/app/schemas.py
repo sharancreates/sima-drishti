@@ -1,6 +1,5 @@
 from pydantic import BaseModel
 from typing import List, Optional
-from datetime import datetime
 
 class DetectionPayload(BaseModel):
     object_class: str
@@ -9,6 +8,7 @@ class DetectionPayload(BaseModel):
     track_id: int
     in_zone: bool
     timestamp: float
+    frame_image: Optional[str] = None  # Base64 encoded JPEG for alert thumbnail
 
 class AlertOut(BaseModel):
     alert_id: int

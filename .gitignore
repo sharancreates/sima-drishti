@@ -223,3 +223,6 @@ __marimo__/
 sima_drishti.db
 .vscode/
 .idea/
+# Thumbnails
+backend/static/thumbnails/*.jpg
+backend/static/thumbnails/*.png
