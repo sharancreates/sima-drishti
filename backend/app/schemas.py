@@ -1,6 +1,19 @@
 from pydantic import BaseModel
 from typing import List, Optional
 
+class ZoneCreate(BaseModel):
+    zone_id: str
+    name: str
+    camera_id: str
+    lat: float
+    lng: float
+
+class ZoneOut(ZoneCreate):
+    id: int
+
+    class Config:
+        from_attributes = True
+
 class DetectionPayload(BaseModel):
     object_class: str
     confidence: float
@@ -8,7 +21,8 @@ class DetectionPayload(BaseModel):
     track_id: int
     in_zone: bool
     timestamp: float
-    frame_image: Optional[str] = None  # Base64 encoded JPEG for alert thumbnail
+    zone_id: Optional[str] = "Sector_Alpha"
+    frame_image: Optional[str] = None
 
 class AlertOut(BaseModel):
     alert_id: int

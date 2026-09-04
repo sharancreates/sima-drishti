@@ -1,45 +1,40 @@
-import logging
-from typing import Optional
+import serial
+import time
+import threading
 
-logger = logging.getLogger("hardware")
+class HardwareBridge:
+    def __init__(self, port: str = "COM3", baudrate: int = 9600):
+        self.port = port
+        self.baudrate = baudrate
+        self.serial_conn = None
+        self._connect()
 
-class ArduinoBridge:
-    """
-    Serial trigger bridge for Arduino alert indicators (LED/Buzzer).
-    Falls back gracefully if hardware is not connected.
-    """
-    def __init__(self, port: Optional[str] = None, baudrate: int = 9600):
-        self.ser = None
-        self.connected = False
-        if port:
-            self.connect(port, baudrate)
-
-    def connect(self, port: str, baudrate: int = 9600):
+    def _connect(self):
         try:
-            import serial
-            self.ser = serial.Serial(port, baudrate, timeout=1)
-            self.connected = True
-            logger.info(f"Connected to Arduino on port {port}")
+            self.serial_conn = serial.Serial(self.port, self.baudrate, timeout=1)
+            time.sleep(2)  # Allow Arduino reset on connection
+            print(f"[Hardware] Successfully connected to microcontroller on {self.port}")
         except Exception as e:
-            self.connected = False
-            logger.warning(f"Arduino connection failed on {port}: {e}. Mock mode active.")
+            print(f"[Hardware Warning] Microcontroller not detected on {self.port} ({e}). Running in fallback mode.")
+            self.serial_conn = None
 
     def trigger_alert(self):
-        if self.connected and self.ser:
+        """Sends pulse trigger '1' to Arduino buzzer/relay circuit."""
+        if self.serial_conn and self.serial_conn.is_open:
             try:
-                self.ser.write(b"ALERT_ON\n")
+                # Run in thread so serial I/O never blocks main event loop
+                threading.Thread(target=self._send_signal, daemon=True).start()
             except Exception as e:
-                logger.error(f"Failed to write to serial: {e}")
+                print(f"[Hardware Error] Failed to send trigger: {e}")
         else:
-            logger.info("[MOCK ARDUINO] Signal sent: ALERT_ON")
+            print("[Hardware Mock] BUZZER/RELAY TRIGGERED (No active serial port)")
 
-    def reset_alert(self):
-        if self.connected and self.ser:
-            try:
-                self.ser.write(b"ALERT_OFF\n")
-            except Exception as e:
-                logger.error(f"Failed to write to serial: {e}")
-        else:
-            logger.info("[MOCK ARDUINO] Signal sent: ALERT_OFF")
+    def _send_signal(self):
+        try:
+            self.serial_conn.write(b'1\n')
+            time.sleep(1)
+            self.serial_conn.write(b'0\n')
+        except Exception as e:
+            print(f"[Hardware Error] Serial write failed: {e}")
 
-hardware_bridge = ArduinoBridge()
+hardware_bridge = HardwareBridge()

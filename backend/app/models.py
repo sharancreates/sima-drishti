@@ -1,15 +1,25 @@
-from datetime import datetime
 from sqlalchemy import Column, Integer, String, Float, DateTime
+from datetime import datetime
 from app.database import Base
 
 class AlertLog(Base):
     __tablename__ = "alerts"
 
-    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    object_class = Column(String, index=True, nullable=False)
-    zone = Column(String, default="Sector_Alpha")
+    id = Column(Integer, primary_key=True, index=True)
+    object_class = Column(String, nullable=False)
+    zone = Column(String, nullable=False)
     thumbnail = Column(String, default="")
-    lat = Column(Float, default=28.7041)
-    lng = Column(Float, default=77.1025)
-    confidence = Column(Float, default=0.0)
+    lat = Column(Float, nullable=False)
+    lng = Column(Float, nullable=False)
+    confidence = Column(Float, nullable=False)
     timestamp = Column(DateTime, default=datetime.utcnow)
+
+class Zone(Base):
+    __tablename__ = "zones"
+
+    id = Column(Integer, primary_key=True, index=True)
+    zone_id = Column(String, unique=True, index=True, nullable=False)
+    name = Column(String, nullable=False)
+    camera_id = Column(String, nullable=False)
+    lat = Column(Float, nullable=False)
+    lng = Column(Float, nullable=False)

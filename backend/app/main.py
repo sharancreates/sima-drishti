@@ -5,30 +5,24 @@ from typing import List
 import json
 import uvicorn
 
-from fastapi import FastAPI, Depends, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Depends, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 
 from app.database import Base, engine, get_db
-from app.models import AlertLog
-from app.schemas import DetectionPayload, AlertOut
+from app.models import AlertLog, Zone
+from app.schemas import DetectionPayload, AlertOut, ZoneCreate, ZoneOut
 from app.fusion import fusion_engine
 from app.hardware import hardware_bridge
 
-# Ensure SQLite schema is updated
 Base.metadata.create_all(bind=engine)
 
-# Ensure thumbnails directory exists
 THUMBNAIL_DIR = "static/thumbnails"
 os.makedirs(THUMBNAIL_DIR, exist_ok=True)
 
-app = FastAPI(
-    title="Sima-Drishti Surveillance API",
-    version="1.0.0"
-)
+app = FastAPI(title="Sima-Drishti Surveillance API", version="1.0.0")
 
-# Enable CORS for React/Vite development server (usually port 5173)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -37,7 +31,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount static folder so UI can load thumbnails via URL
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 class ConnectionManager:
@@ -70,12 +63,26 @@ def health_check():
         "timestamp": datetime.utcnow().isoformat()
     }
 
+@app.post("/zones", response_model=ZoneOut)
+def create_zone(zone_in: ZoneCreate, db: Session = Depends(get_db)):
+    existing = db.query(Zone).filter(Zone.zone_id == zone_in.zone_id).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Zone ID already exists")
+    new_zone = Zone(**zone_in.model_dump())
+    db.add(new_zone)
+    db.commit()
+    db.refresh(new_zone)
+    return new_zone
+
+@app.get("/zones", response_model=List[ZoneOut])
+def list_zones(db: Session = Depends(get_db)):
+    return db.query(Zone).all()
+
 @app.websocket("/ws/alerts")
 async def websocket_endpoint(websocket: WebSocket):
     await manager.connect(websocket)
     try:
         while True:
-            # Keep connection alive
             await websocket.receive_text()
     except WebSocketDisconnect:
         manager.disconnect(websocket)
@@ -85,8 +92,13 @@ async def receive_detection(payload: DetectionPayload, db: Session = Depends(get
     is_confirmed, reason = fusion_engine.process(payload)
 
     if is_confirmed:
+        # Resolve dynamic coordinates if zone is in DB, fallback to Sector_Alpha defaults
+        zone_info = db.query(Zone).filter(Zone.zone_id == payload.zone_id).first()
+        lat = zone_info.lat if zone_info else 28.7041
+        lng = zone_info.lng if zone_info else 77.1025
+        zone_name = zone_info.name if zone_info else payload.zone_id
+
         thumbnail_url = ""
-        # If AI sends base64 frame thumbnail, decode and store it locally
         if payload.frame_image:
             try:
                 filename = f"alert_{int(datetime.utcnow().timestamp())}_{payload.track_id}.jpg"
@@ -97,13 +109,12 @@ async def receive_detection(payload: DetectionPayload, db: Session = Depends(get
             except Exception as err:
                 print(f"Failed to decode thumbnail: {err}")
 
-        # Save to SQLite
         new_alert = AlertLog(
             object_class=payload.object_class,
-            zone="Sector_Alpha",
+            zone=zone_name,
             thumbnail=thumbnail_url,
-            lat=28.7041,
-            lng=77.1025,
+            lat=lat,
+            lng=lng,
             confidence=payload.confidence,
             timestamp=datetime.utcnow()
         )
@@ -111,10 +122,8 @@ async def receive_detection(payload: DetectionPayload, db: Session = Depends(get
         db.commit()
         db.refresh(new_alert)
 
-        # Trigger Physical Hardware
         hardware_bridge.trigger_alert()
 
-        # Push to UI clients via WebSocket matching contract exactly
         alert_data = {
             "alert_id": new_alert.id,
             "object_class": new_alert.object_class,
