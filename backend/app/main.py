@@ -4,10 +4,12 @@ from datetime import datetime
 from typing import List
 import json
 import uvicorn
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Depends, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.database import Base, engine, get_db
@@ -15,13 +17,25 @@ from app.models import AlertLog, Zone
 from app.schemas import DetectionPayload, AlertOut, ZoneCreate, ZoneOut
 from app.fusion import fusion_engine
 from app.hardware import hardware_bridge
+from app.utils import cleanup_old_thumbnails
 
 Base.metadata.create_all(bind=engine)
 
 THUMBNAIL_DIR = "static/thumbnails"
 os.makedirs(THUMBNAIL_DIR, exist_ok=True)
 
-app = FastAPI(title="Sima-Drishti Surveillance API", version="1.0.0")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup tasks
+    cleanup_old_thumbnails()
+    yield
+    # Shutdown tasks (if any)
+
+app = FastAPI(
+    title="Sima-Drishti Surveillance API",
+    version="1.0.0",
+    lifespan=lifespan
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -53,6 +67,10 @@ class ConnectionManager:
                 pass
 
 manager = ConnectionManager()
+
+@app.get("/")
+def read_root():
+    return FileResponse("static/index.html")
 
 @app.get("/health")
 def health_check():
@@ -92,7 +110,6 @@ async def receive_detection(payload: DetectionPayload, db: Session = Depends(get
     is_confirmed, reason = fusion_engine.process(payload)
 
     if is_confirmed:
-        # Resolve dynamic coordinates if zone is in DB, fallback to Sector_Alpha defaults
         zone_info = db.query(Zone).filter(Zone.zone_id == payload.zone_id).first()
         lat = zone_info.lat if zone_info else 28.7041
         lng = zone_info.lng if zone_info else 77.1025

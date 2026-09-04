@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Sima-Drishti Diagnostic Console</title>
+    <style>
+        body { font-family: monospace; background: #0f172a; color: #f8fafc; margin: 0; padding: 20px; }
+        h1 { color: #38bdf8; border-bottom: 2px solid #334155; padding-bottom: 10px; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .card { background: #1e293b; border: 1px solid #334155; padding: 15px; border-radius: 8px; max-height: 500px; overflow-y: auto; }
+        pre { background: #090d16; padding: 10px; border-radius: 4px; overflow-x: auto; color: #4ade80; }
+        .alert-item { border-bottom: 1px solid #334155; padding: 10px 0; display: flex; gap: 15px; align-items: center; }
+        .alert-item img { width: 80px; height: 60px; object-fit: cover; border-radius: 4px; background: #334155; }
+    </style>
+</head>
+<body>
+    <h1>Sima-Drishti Surveillance Backend — Diagnostic Console</h1>
+    <div class="grid">
+        <div class="card">
+            <h3>Live WebSocket Stream (ws://localhost:8000/ws/alerts)</h3>
+            <div id="ws-stream">Waiting for real-time alerts...</div>
+        </div>
+        <div class="card">
+            <h3>Recent Database Alerts (/alerts)</h3>
+            <div id="db-alerts">Loading history...</div>
+        </div>
+    </div>
+
+    <script>
+        // Fetch historical logs
+        fetch('/alerts')
+            .then(res => res.json())
+            .then(data => {
+                const container = document.getElementById('db-alerts');
+                container.innerHTML = data.map(a => `
+                    <div class="alert-item">
+                        <img src="${a.thumbnail || 'https://via.placeholder.com/80'}" />
+                        <div>
+                            <b>[#${a.alert_id}] ${a.object_class.toUpperCase()}</b><br>
+                            Zone: ${a.zone}<br>
+                            Time: ${new Date(a.timestamp).toLocaleTimeString()}
+                        </div>
+                    </div>
+                `).join('');
+            });
+
+        // WebSocket Listener
+        const ws = new WebSocket(`ws://${window.location.host}/ws/alerts`);
+        ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            const stream = document.getElementById('ws-stream');
+            const item = document.createElement('div');
+            item.className = 'alert-item';
+            item.innerHTML = `
+                <img src="${data.thumbnail || 'https://via.placeholder.com/80'}" />
+                <div>
+                    <b>🚨 NEW ALERT: ${data.object_class.toUpperCase()}</b><br>
+                    Zone: ${data.zone}<br>
+                    Time: ${new Date(data.timestamp).toLocaleTimeString()}
+                </div>
+            `;
+            stream.prepend(item);
+        };
+    </script>
+</body>
+</html>
