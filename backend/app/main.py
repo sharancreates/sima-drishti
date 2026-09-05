@@ -1,6 +1,6 @@
 import os
 import base64
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List
 import json
 import uvicorn
@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 
 from app.database import Base, engine, get_db
 from app.models import AlertLog, Zone
@@ -18,6 +19,7 @@ from app.schemas import DetectionPayload, AlertOut, ZoneCreate, ZoneOut
 from app.fusion import fusion_engine
 from app.hardware import hardware_bridge
 from app.utils import cleanup_old_thumbnails
+from app.auth import verify_api_key
 
 Base.metadata.create_all(bind=engine)
 
@@ -26,10 +28,8 @@ os.makedirs(THUMBNAIL_DIR, exist_ok=True)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup tasks
     cleanup_old_thumbnails()
     yield
-    # Shutdown tasks (if any)
 
 app = FastAPI(
     title="Sima-Drishti Surveillance API",
@@ -81,8 +81,22 @@ def health_check():
         "timestamp": datetime.utcnow().isoformat()
     }
 
+@app.get("/analytics")
+def get_analytics(db: Session = Depends(get_db)):
+    total_alerts = db.query(AlertLog).count()
+    total_zones = db.query(Zone).count()
+    last_24h = datetime.utcnow() - timedelta(hours=24)
+    alerts_last_24h = db.query(AlertLog).filter(AlertLog.timestamp >= last_24h).count()
+    
+    return {
+        "total_alerts": total_alerts,
+        "alerts_last_24h": alerts_last_24h,
+        "active_zones": total_zones,
+        "hardware_status": "fallback_mode" if hardware_bridge.serial_conn is None else "connected"
+    }
+
 @app.post("/zones", response_model=ZoneOut)
-def create_zone(zone_in: ZoneCreate, db: Session = Depends(get_db)):
+def create_zone(zone_in: ZoneCreate, db: Session = Depends(get_db), api_key: str = Depends(verify_api_key)):
     existing = db.query(Zone).filter(Zone.zone_id == zone_in.zone_id).first()
     if existing:
         raise HTTPException(status_code=400, detail="Zone ID already exists")
@@ -106,7 +120,7 @@ async def websocket_endpoint(websocket: WebSocket):
         manager.disconnect(websocket)
 
 @app.post("/detection")
-async def receive_detection(payload: DetectionPayload, db: Session = Depends(get_db)):
+async def receive_detection(payload: DetectionPayload, db: Session = Depends(get_db), api_key: str = Depends(verify_api_key)):
     is_confirmed, reason = fusion_engine.process(payload)
 
     if is_confirmed:
