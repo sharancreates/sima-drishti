@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BorderVision - Surveillance AI</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            tacticalNavy: '#0B1120',
+            tacticalBlue: '#3B82F6',
+            tacticalSlate: '#1E293B',
+            tacticalBorder: '#1e3a5f'
+          },
+          fontFamily: {
+            mono: ['JetBrains Mono', 'monospace'],
+            sans: ['Inter', 'sans-serif']
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    @keyframes sweep {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    @keyframes pulse-ring {
+      0% { transform: scale(0.65); opacity: 0.8; }
+      50% { transform: scale(1); opacity: 0.3; }
+      100% { transform: scale(1.35); opacity: 0; }
+    }
+    @keyframes ping-slow {
+      0% { transform: scale(0.9); opacity: 0.8; }
+      70%, 100% { transform: scale(1.6); opacity: 0; }
+    }
+    @keyframes grid-glow {
+      0%, 100% { opacity: 0.15; }
+      50% { opacity: 0.28; }
+    }
+    .radar-sweep {
+      animation: sweep 3s linear infinite;
+      transform-origin: center center;
+    }
+    .pulse-ring-1 {
+      animation: pulse-ring 2.8s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+    }
+    .pulse-ring-2 {
+      animation: pulse-ring 2.8s cubic-bezier(0.215, 0.61, 0.355, 1) 0.9s infinite;
+    }
+    .pulse-ring-3 {
+      animation: pulse-ring 2.8s cubic-bezier(0.215, 0.61, 0.355, 1) 1.8s infinite;
+    }
+    .bg-grid-tactical {
+      background-size: 36px 36px;
+      background-image: 
+        linear-gradient(to right, rgba(59, 130, 246, 0.05) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(59, 130, 246, 0.05) 1px, transparent 1px);
+    }
+    .corner-bracket {
+      position: absolute;
+      width: 14px;
+      height: 14px;
+      border-color: rgba(59, 130, 246, 0.6);
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body class="bg-tacticalNavy text-slate-200 min-h-screen overflow-x-hidden font-sans select-none antialiased">
+
+  <!-- Full Application Container -->
+  <div id="app" class="relative w-full min-h-screen bg-tacticalNavy overflow-hidden">
+    
+    <!-- SUBTLE BACKGROUND MILITARY/SURVEILLANCE GRID -->
+    <div class="absolute inset-0 bg-grid-tactical pointer-events-none"></div>
+    <div class="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(59,130,246,0.07)_0%,transparent_70%)] pointer-events-none"></div>
+
+    <!-- ============================================== -->
+    <!-- SCREEN 1: TACTICAL LOADING / SPLASH SCREEN     -->
+    <!-- ============================================== -->
+    <div id="splashScreen" class="absolute inset-0 z-50 flex flex-col justify-between items-center px-6 py-8 transition-opacity duration-700 ease-in-out bg-tacticalNavy">
+      
+      <!-- Top Tactical Header Elements -->
+      <div class="w-full max-w-6xl flex justify-between items-center text-xs font-mono text-slate-500 tracking-wider">
+        <div class="flex items-center space-x-3">
+          <span class="inline-flex items-center px-2.5 py-0.5 rounded text-[10px] font-semibold bg-blue-950/60 text-blue-400 border border-blue-800/40">
+            <span class="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse mr-1.5"></span>
+            SYS-ACTIVE
+          </span>
+          <span class="hidden sm:inline text-slate-500">SECTOR 04-NORTH // SECURE FEED</span>
+        </div>
+        <div class="flex items-center space-x-4">
+          <span id="systemClock" class="text-slate-400 font-mono">00:00:00 UTC</span>
+          <span class="hidden md:inline text-slate-600">PROTOCOL: AES-256-GCM</span>
+        </div>
+      </div>
+
+      <!-- Centered Tactical Branding & Animated Radar Scanner -->
+      <div class="flex flex-col items-center justify-center my-auto w-full max-w-md relative">
+        
+        <!-- Subtle tactical targeting brackets around container -->
+        <div class="corner-bracket top-[-24px] left-[-24px] border-t-2 border-l-2"></div>
+        <div class="corner-bracket top-[-24px] right-[-24px] border-t-2 border-r-2"></div>
+        <div class="corner-bracket bottom-[-24px] left-[-24px] border-b-2 border-l-2"></div>
+        <div class="corner-bracket bottom-[-24px] right-[-24px] border-b-2 border-r-2"></div>
+
+        <!-- App Logo & Typography -->
+        <div class="text-center mb-8">
+          <div class="inline-flex items-center justify-center space-x-3 mb-2">
+            <div class="w-8 h-8 rounded border border-blue-500/40 bg-blue-950/30 flex items-center justify-center text-blue-400 shadow-[0_0_15px_rgba(59,130,246,0.3)]">
+              <i class="fa-solid fa-crosshairs text-base"></i>
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight text-white font-sans">
+              Border<span class="text-blue-500 font-light">Vision</span>
+            </h1>
+          </div>
+          <p class="text-xs sm:text-sm font-mono tracking-widest uppercase text-slate-400 font-medium">
+            AI Eyes on Existing CCTV
+          </p>
+        </div>
+
+        <!-- Animated Pulsing Radar / Scan Icon Concentric Circles -->
+        <div class="relative w-52 h-52 flex items-center justify-center mb-8">
+          
+          <!-- Concentric Outer Rings (Surveillance Geometry) -->
+          <div class="absolute inset-0 rounded-full border border-blue-900/30"></div>
+          <div class="absolute inset-4 rounded-full border border-blue-800/40"></div>
+          <div class="absolute inset-10 rounded-full border border-blue-600/30"></div>
+          <div class="absolute inset-16 rounded-full border border-blue-500/40 border-dashed"></div>
+
+          <!-- Radar Crosshairs (Military Axes) -->
+          <div class="absolute inset-0 flex items-center justify-center pointer-events-none opacity-40">
+            <div class="w-full h-[1px] bg-gradient-to-r from-transparent via-blue-500 to-transparent"></div>
+          </div>
+          <div class="absolute inset-0 flex items-center justify-center pointer-events-none opacity-40">
+            <div class="h-full w-[1px] bg-gradient-to-b from-transparent via-blue-500 to-transparent"></div>
+          </div>
+
+          <!-- Pulsing Rings -->
+          <div class="absolute w-28 h-28 rounded-full border border-blue-500/60 pulse-ring-1"></div>
+          <div class="absolute w-28 h-28 rounded-full border border-blue-400/50 pulse-ring-2"></div>
+          <div class="absolute w-28 h-28 rounded-full border border-blue-300/40 pulse-ring-3"></div>
+
+          <!-- Rotating Radar Sweep Beam -->
+          <svg class="absolute inset-0 w-full h-full radar-sweep pointer-events-none" viewBox="0 0 200 200">
+            <defs>
+              <linearGradient id="sweepGradient" x1="100" y1="100" x2="200" y2="100" gradientUnits="userSpaceOnUse">
+                <stop offset="0%" stop-color="#3B82F6" stop-opacity="0" />
+                <stop offset="100%" stop-color="#3B82F6" stop-opacity="0.38" />
+              </linearGradient>
+            </defs>
+            <path d="M 100 100 L 200 100 A 100 100 0 0 0 170.7 29.3 Z" fill="url(#sweepGradient)" />
+            <line x1="100" y1="100" x2="200" y2="100" stroke="#3B82F6" stroke-width="1.5" stroke-opacity="0.9" />
+          </svg>
+
+          <!-- Radar Detected Blip / Thermal Anomaly -->
+          <div class="absolute top-12 right-14 w-2 h-2 rounded-full bg-blue-400 shadow-[0_0_10px_#3b82f6] animate-pulse"></div>
+          <div class="absolute bottom-16 left-12 w-1.5 h-1.5 rounded-full bg-slate-400 opacity-60"></div>
+
+          <!-- Radar Core Center Target -->
+          <div class="relative z-10 w-8 h-8 rounded-full bg-tacticalNavy border border-blue-400 flex items-center justify-center shadow-[0_0_15px_rgba(59,130,246,0.6)]">
+            <div class="w-2.5 h-2.5 rounded-full bg-blue-500 animate-ping"></div>
+            <div class="absolute w-2 h-2 rounded-full bg-blue-400"></div>
+          </div>
+        </div>
+
+        <!-- Rotating Status Telemetry & Slim Progress Bar -->
+        <div class="w-full space-y-3">
+          
+          <!-- Status Line with animated indicator -->
+          <div class="flex items-center justify-between font-mono text-xs text-slate-300">
+            <div class="flex items-center space-x-2">
+              <span class="inline-block w-2 h-2 rounded-full bg-blue-500 animate-ping"></span>
+              <span id="statusText" class="transition-opacity duration-300 font-medium">Connecting to camera feed...</span>
+            </div>
+            <span id="percentText" class="text-blue-400 font-semibold font-mono">14%</span>
+          </div>
+
+          <!-- Ultra-slim Tactical Progress Bar -->
+          <div class="w-full h-1 bg-slate-800/80 rounded-full overflow-hidden border border-slate-700/40 relative">
+            <div id="progressBar" class="h-full bg-blue-500 transition-all duration-300 ease-out shadow-[0_0_10px_#3B82F6]" style="width: 14%;"></div>
+          </div>
+
+          <!-- Animated Dots / Sequence Indicators -->
+          <div class="flex justify-between items-center pt-1 font-mono text-[10px] text-slate-500">
+            <div class="flex space-x-1.5" id="stepDots">
+              <div class="w-2 h-1 bg-blue-500 rounded-sm"></div>
+              <div class="w-2 h-1 bg-slate-700 rounded-sm"></div>
+              <div class="w-2 h-1 bg-slate-700 rounded-sm"></div>
+            </div>
+            <span class="tracking-widest">ENCRYPTED STREAM // RTSP</span>
+          </div>
+
+          <!-- Bypass / Enter Dashboard Button -->
+          <div class="pt-4 flex justify-center">
+            <button id="enterDashboardBtn" onclick="transitionToDashboard()" class="group relative inline-flex items-center space-x-2 px-5 py-2.5 rounded text-xs font-mono tracking-wider font-semibold text-white bg-slate-900 border border-blue-500/50 hover:border-blue-400 hover:bg-blue-950/40 hover:shadow-[0_0_20px_rgba(59,130,246,0.35)] transition-all">
+              <i class="fa-solid fa-shield-halved text-blue-400 group-hover:rotate-12 transition-transform"></i>
+              <span>ENTER DASHBOARD</span>
+              <i class="fa-solid fa-arrow-right text-[10px] text-slate-400 group-hover:translate-x-1 transition-transform"></i>
+            </button>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Bottom Tactical Footer Text -->
+      <div class="w-full max-w-6xl flex flex-col sm:flex-row justify-between items-center text-[11px] font-mono text-slate-500 border-t border-slate-800/50 pt-4 gap-2">
+        <div>
+          <span>DEFENSE SECURITY NODE 09</span>
+          <span class="mx-2 text-slate-700">|</span>
+          <span class="text-slate-400">GEO: 34.0837° N, 74.7973° E</span>
+        </div>
+        <div class="text-center sm:text-right font-semibold text-slate-400 tracking-wider">
+          Team AION · SIH 2026
+        </div>
+      </div>
+
+    </div>
+
+
+    <!-- ============================================== -->
+    <!-- SCREEN 2: MAIN TACTICAL DASHBOARD              -->
+    <!-- ============================================== -->
+    <div id="mainDashboard" class="relative z-10 w-full min-h-screen flex flex-col opacity-0 pointer-events-none transition-opacity duration-700 ease-in-out bg-tacticalNavy">
+      
+      <!-- Top Navigation Bar -->
+      <header class="h-16 border-b border-slate-800/80 bg-tacticalNavy/90 backdrop-blur px-6 flex items-center justify-between sticky top-0 z-40">
+        <div class="flex items-center space-x-6">
+          <div class="flex items-center space-x-3">
+            <div class="w-8 h-8 rounded border border-blue-500/50 bg-blue-950/40 flex items-center justify-center text-blue-400 shadow-[0_0_12px_rgba(59,130,246,0.25)]">
+              <i class="fa-solid fa-crosshairs text-sm"></i>
+            </div>
+            <div>
+              <span class="text-lg font-bold text-white tracking-tight">Border<span class="text-blue-500">Vision</span></span>
+              <span class="ml-2 text-[10px] font-mono px-2 py-0.5 rounded bg-blue-900/30 text-blue-400 border border-blue-700/30">AI-CCTV v2.4</span>
+            </div>
+          </div>
+          
+          <nav class="hidden md:flex items-center space-x-1 font-mono text-xs">
+            <button class="px-3 py-1.5 rounded bg-blue-600 text-white font-medium">LIVE FEEDS</button>
+            <button class="px-3 py-1.5 rounded text-slate-400 hover:text-white hover:bg-slate-800/60 transition">INTRUSION LOGS</button>
+            <button class="px-3 py-1.5 rounded text-slate-400 hover:text-white hover:bg-slate-800/60 transition">OPTICAL / THERMAL</button>
+            <button class="px-3 py-1.5 rounded text-slate-400 hover:text-white hover:bg-slate-800/60 transition">CAMERA TOPOLOGY</button>
+          </nav>
+        </div>
+
+        <div class="flex items-center space-x-4 font-mono text-xs">
+          <!-- Live Threat Metric Indicator -->
+          <div class="hidden lg:flex items-center space-x-2 bg-slate-900/90 border border-slate-800 px-3 py-1 rounded">
+            <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span class="text-slate-400">DEFCON:</span>
+            <span class="text-emerald-400 font-bold">NORMAL (IV)</span>
+          </div>
+
+          <!-- Return to Splash Test Button -->
+          <button onclick="transitionToSplash()" class="px-2.5 py-1 text-[11px] rounded bg-slate-800/70 hover:bg-slate-700 border border-slate-700 text-slate-300 transition flex items-center space-x-1.5" title="Replay Splash Screen">
+            <i class="fa-solid fa-rotate-left"></i>
+            <span class="hidden sm:inline">RELOAD SPLASH</span>
+          </button>
+
+          <!-- Operator Profile Badge -->
+          <div class="flex items-center space-x-2 border-l border-slate-800 pl-4">
+            <div class="w-7 h-7 rounded bg-blue-950/60 border border-blue-600/40 flex items-center justify-center text-blue-400 text-xs font-bold">
+              OP
+            </div>
+            <div class="hidden sm:block text-left">
+              <div class="text-slate-200 text-xs font-medium leading-none">Officer K. Roy</div>
+              <div class="text-slate-500 text-[10px]">Station 04-Leh</div>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <!-- Main Dashboard Grid -->
+      <main class="flex-1 p-6 space-y-6 max-w-7xl w-full mx-auto">
+        
+        <!-- Live System Metrics Banner -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div class="bg-slate-900/60 border border-slate-800/80 rounded-lg p-4 relative overflow-hidden">
+            <div class="text-xs font-mono text-slate-400">ACTIVE CAMERA FEEDS</div>
+            <div class="text-2xl font-bold font-mono text-white mt-1">48 / 48 <span class="text-xs text-blue-400 font-normal">100% ONLINE</span></div>
+            <div class="text-[11px] text-slate-500 font-mono mt-1">Zero dropped frames</div>
+            <div class="absolute top-3 right-3 text-blue-500/20 text-xl"><i class="fa-solid fa-video"></i></div>
+          </div>
+
+          <div class="bg-slate-900/60 border border-slate-800/80 rounded-lg p-4 relative overflow-hidden">
+            <div class="text-xs font-mono text-slate-400">AI INFERENCE LATENCY</div>
+            <div class="text-2xl font-bold font-mono text-blue-400 mt-1">18.4 ms</div>
+            <div class="text-[11px] text-emerald-400 font-mono mt-1">YOLOv9-Surv Active</div>
+            <div class="absolute top-3 right-3 text-blue-500/20 text-xl"><i class="fa-solid fa-microchip"></i></div>
+          </div>
+
+          <div class="bg-slate-900/60 border border-slate-800/80 rounded-lg p-4 relative overflow-hidden">
+            <div class="text-xs font-mono text-slate-400">CONFIRMED INTRUSIONS (24H)</div>
+            <div class="text-2xl font-bold font-mono text-amber-400 mt-1">02 <span class="text-xs text-slate-400 font-normal">CLASSIFIED</span></div>
+            <div class="text-[11px] text-slate-400 font-mono mt-1">Both neutralized</div>
+            <div class="absolute top-3 right-3 text-amber-500/20 text-xl"><i class="fa-solid fa-triangle-exclamation"></i></div>
+          </div>
+
+          <div class="bg-slate-900/60 border border-slate-800/80 rounded-lg p-4 relative overflow-hidden">
+            <div class="text-xs font-mono text-slate-400">SYSTEM HEALTH</div>
+            <div class="text-2xl font-bold font-mono text-emerald-400 mt-1">99.98%</div>
+            <div class="text-[11px] text-slate-500 font-mono mt-1">Team AION · SIH 2026</div>
+            <div class="absolute top-3 right-3 text-emerald-500/20 text-xl"><i class="fa-solid fa-server"></i></div>
+          </div>
+        </div>
+
+        <!-- Video Feed & Tactical Perimeter Centerpiece -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          
+          <!-- Primary Feed (2 cols) -->
+          <div class="lg:col-span-2 bg-slate-900/80 border border-slate-800 rounded-lg overflow-hidden flex flex-col">
+            <!-- Feed Header -->
+            <div class="px-4 py-3 border-b border-slate-800 flex justify-between items-center bg-slate-950/60">
+              <div class="flex items-center space-x-3 font-mono text-xs">
+                <span class="flex h-2 w-2 relative">
+                  <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                  <span class="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+                </span>
+                <span class="text-white font-semibold">CAM-01 [NORTH RIDGE - THERMAL HIGH-DEF]</span>
+                <span class="text-slate-500">1080p @ 60 FPS</span>
+              </div>
+              <div class="flex items-center space-x-2 text-xs font-mono text-slate-400">
+                <span class="px-2 py-0.5 rounded bg-slate-800 border border-slate-700">AI BBOX: ON</span>
+              </div>
+            </div>
+
+            <!-- Simulated Surveillance Video Feed Canvas -->
+            <div class="relative bg-slate-950 flex-1 min-h-[360px] flex items-center justify-center overflow-hidden">
+              
+              <!-- Video background representation -->
+              <div class="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-900 to-slate-950 opacity-90"></div>
+              
+              <!-- Tactical wireframe terrain lines -->
+              <div class="absolute inset-0 bg-[linear-gradient(rgba(59,130,246,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(59,130,246,0.03)_1px,transparent_1px)] bg-[size:40px_40px]"></div>
+
+              <!-- HUD Reticles -->
+              <div class="absolute inset-8 border border-blue-500/20 pointer-events-none">
+                <div class="absolute top-2 left-2 text-[10px] font-mono text-blue-400">TARGET ACQUISITION MATRIX</div>
+                <div class="absolute bottom-2 left-2 text-[10px] font-mono text-slate-500">FOV: 112° AZIMUTH: 314° ELEV: +12°</div>
+                <div class="absolute top-2 right-2 text-[10px] font-mono text-emerald-400">NO VIOLATION</div>
+              </div>
+
+              <!-- Detection Bounding Box 1 -->
+              <div class="absolute top-28 left-48 w-36 h-44 border-2 border-blue-500/80 rounded bg-blue-500/10 pointer-events-none">
+                <div class="absolute -top-5 left-0 bg-blue-600 text-white text-[9px] font-mono px-1.5 py-0.5 rounded-t">
+                  HUMAN: 96.4%
+                </div>
+                <div class="absolute bottom-1 right-1 text-[8px] font-mono text-blue-300">ID: #4092</div>
+              </div>
+
+              <!-- Detection Bounding Box 2 (Perimeter Wire) -->
+              <div class="absolute bottom-20 right-32 w-52 h-20 border border-dashed border-slate-500/60 pointer-events-none">
+                <span class="absolute -top-4 left-0 text-[9px] font-mono text-slate-400">PERIMETER FENCE SENSOR #8</span>
+              </div>
+
+              <!-- Center targeting crosshair -->
+              <div class="w-16 h-16 border border-blue-400/40 rounded-full flex items-center justify-center">
+                <div class="w-2 h-2 bg-blue-400 rounded-full"></div>
+              </div>
+            </div>
+
+            <!-- Feed Telemetry Bar -->
+            <div class="px-4 py-2.5 bg-slate-950/80 border-t border-slate-800/80 flex flex-wrap justify-between items-center text-[11px] font-mono text-slate-400 gap-2">
+              <div>BANDWIDTH: <span class="text-blue-400">4.2 MB/s</span></div>
+              <div>ENCODING: <span class="text-slate-300">H.265 / LOW LATENCY</span></div>
+              <div>EDGE MODEL: <span class="text-emerald-400">NVIDIA JETSON ORIN #03</span></div>
+            </div>
+          </div>
+
+          <!-- Real-Time Event Feed (1 col) -->
+          <div class="bg-slate-900/80 border border-slate-800 rounded-lg flex flex-col">
+            <div class="px-4 py-3 border-b border-slate-800 flex justify-between items-center bg-slate-950/60">
+              <span class="font-mono text-xs text-white font-semibold uppercase">Surveillance Event Log</span>
+              <span class="text-[10px] font-mono text-blue-400">LIVE SYNC</span>
+            </div>
+
+            <div class="p-4 flex-1 space-y-3 font-mono text-xs overflow-y-auto max-h-[380px]">
+              
+              <div class="p-2.5 rounded bg-slate-950/60 border border-slate-800/80 space-y-1">
+                <div class="flex justify-between text-[10px] text-slate-400">
+                  <span class="text-blue-400">CAM-01 [NORTH RIDGE]</span>
+                  <span>14:32:19</span>
+                </div>
+                <div class="text-slate-200 text-xs font-semibold">Motion Vector Detected</div>
+                <div class="text-[11px] text-slate-400">Classified: Border Patrol Unit (Authorized Tag).</div>
+              </div>
+
+              <div class="p-2.5 rounded bg-slate-950/60 border border-slate-800/80 space-y-1">
+                <div class="flex justify-between text-[10px] text-slate-400">
+                  <span class="text-slate-300">CAM-12 [VALLEY SECTOR]</span>
+                  <span>14:30:05</span>
+                </div>
+                <div class="text-slate-200 text-xs font-semibold">Optical Flare Compensated</div>
+                <div class="text-[11px] text-slate-400">IR filter engaged automatically. Feed clear.</div>
+              </div>
+
+              <div class="p-2.5 rounded bg-slate-950/60 border border-slate-800/80 space-y-1">
+                <div class="flex justify-between text-[10px] text-slate-400">
+                  <span class="text-emerald-400">NEURAL ENGINE</span>
+                  <span>14:28:44</span>
+                </div>
+                <div class="text-slate-200 text-xs font-semibold">Model Weights Checksum OK</div>
+                <div class="text-[11px] text-slate-400">BorderVision Edge models verified across 48 nodes.</div>
+              </div>
+
+              <div class="p-2.5 rounded bg-slate-950/60 border border-slate-800/80 space-y-1">
+                <div class="flex justify-between text-[10px] text-slate-400">
+                  <span class="text-slate-400">SYSTEM INIT</span>
+                  <span>14:25:00</span>
+                </div>
+                <div class="text-slate-200 text-xs font-semibold">System Boot Complete</div>
+                <div class="text-[11px] text-slate-400">SIH 2026 Initiative - Border AI operational.</div>
+              </div>
+
+            </div>
+          </div>
+
+        </div>
+
+      </main>
+
+      <!-- Dashboard Footer -->
+      <footer class="h-10 border-t border-slate-800/80 bg-slate-950 px-6 flex items-center justify-between font-mono text-[11px] text-slate-500">
+        <div>Team AION · Smart India Hackathon 2026</div>
+        <div>BORDERVISION CORE v2.4.1 // SECURE DEPLOYMENT</div>
+      </footer>
+
+    </div>
+
+  </div>
+
+  <!-- Interactive Logic & Simulated Cycling -->
+  <script>
+    // State management
+    const statusMessages = [
+      "Connecting to camera feed...",
+      "Loading detection models...",
+      "Initializing dashboard..."
+    ];
+    let currentIndex = 0;
+    let progress = 14;
+    let autoTransitionTimer = null;
+    let statusInterval = null;
+
+    // Elements
+    const statusTextEl = document.getElementById('statusText');
+    const percentTextEl = document.getElementById('percentText');
+    const progressBarEl = document.getElementById('progressBar');
+    const stepDotsEl = document.getElementById('stepDots');
+    const splashScreenEl = document.getElementById('splashScreen');
+    const mainDashboardEl = document.getElementById('mainDashboard');
+    const systemClockEl = document.getElementById('systemClock');
+
+    // Live UTC Clock
+    function updateClock() {
+      const now = new Date();
+      const h = String(now.getUTCHours()).padStart(2, '0');
+      const m = String(now.getUTCMinutes()).padStart(2, '0');
+      const s = String(now.getUTCSeconds()).padStart(2, '0');
+      if (systemClockEl) {
+        systemClockEl.innerText = `${h}:${m}:${s} UTC`;
+      }
+    }
+    setInterval(updateClock, 1000);
+    updateClock();
+
+    // Cycling Status & Progress
+    function startLoadingSequence() {
+      currentIndex = 0;
+      progress = 18;
+      updateUI();
+
+      statusInterval = setInterval(() => {
+        currentIndex++;
+        if (currentIndex < statusMessages.length) {
+          progress = Math.min(100, Math.round(((currentIndex + 1) / statusMessages.length) * 92));
+          updateUI();
+        } else {
+          // Complete
+          progress = 100;
+          updateUI();
+          clearInterval(statusInterval);
+          // Auto transition after loading finishes
+          autoTransitionTimer = setTimeout(() => {
+            transitionToDashboard();
+          }, 800);
+        }
+      }, 1500);
+    }
+
+    function updateUI() {
+      if (statusTextEl && currentIndex < statusMessages.length) {
+        statusTextEl.style.opacity = '0';
+        setTimeout(() => {
+          statusTextEl.innerText = statusMessages[currentIndex];
+          statusTextEl.style.opacity = '1';
+        }, 150);
+      }
+      
+      if (progressBarEl) {
+        progressBarEl.style.width = `${progress}%`;
+      }
+      
+      if (percentTextEl) {
+        percentTextEl.innerText = `${progress}%`;
+      }
+
+      // Update dot indicators
+      if (stepDotsEl) {
+        const dots = stepDotsEl.children;
+        for (let i = 0; i < dots.length; i++) {
+          if (i <= currentIndex) {
+            dots[i].className = 'w-2 h-1 bg-blue-500 rounded-sm transition-colors';
+          } else {
+            dots[i].className = 'w-2 h-1 bg-slate-700 rounded-sm transition-colors';
+          }
+        }
+      }
+    }
+
+    // Transition Functions
+    function transitionToDashboard() {
+      if (statusInterval) clearInterval(statusInterval);
+      if (autoTransitionTimer) clearTimeout(autoTransitionTimer);
+
+      // Fade out splash screen
+      splashScreenEl.style.opacity = '0';
+      splashScreenEl.style.pointerEvents = 'none';
+
+      setTimeout(() => {
+        splashScreenEl.classList.add('hidden');
+        // Fade in main dashboard
+        mainDashboardEl.classList.remove('pointer-events-none');
+        mainDashboardEl.style.opacity = '1';
+      }, 600);
+    }
+
+    function transitionToSplash() {
+      // Fade out dashboard
+      mainDashboardEl.style.opacity = '0';
+      mainDashboardEl.classList.add('pointer-events-none');
+
+      setTimeout(() => {
+        splashScreenEl.classList.remove('hidden');
+        splashScreenEl.style.pointerEvents = 'auto';
+        setTimeout(() => {
+          splashScreenEl.style.opacity = '1';
+          startLoadingSequence();
+        }, 50);
+      }, 600);
+    }
+
+    // Start on load
+    startLoadingSequence();
+  </script>
+</body>
+</html>
