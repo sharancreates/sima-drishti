@@ -1,8 +1,13 @@
-from fastapi import Header, HTTPException, status
 import os
+from dotenv import load_dotenv
+from fastapi import Header, HTTPException, status
 
-# Default fallback key for local dev and hackathon testing
-API_KEY = os.getenv("SIMA_API_KEY", "sima-drishti-secure-key-2026")
+load_dotenv()
+
+API_KEY = os.getenv("API_KEY", "sima-drishti-secure-key-2026")
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./sima_drishti.db")
+SERIAL_PORT = os.getenv("SERIAL_PORT", "COM3")
+SERIAL_BAUD = int(os.getenv("SERIAL_BAUD", 9600))
 
 def verify_api_key(x_api_key: str = Header(default=None)):
     """Validates the incoming X-API-Key header against the environment configuration."""

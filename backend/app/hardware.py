@@ -1,40 +1,32 @@
+import os
 import serial
-import time
-import threading
+from dotenv import load_dotenv
+
+load_dotenv()
+
+SERIAL_PORT = os.getenv("SERIAL_PORT", "COM3")
+SERIAL_BAUD = int(os.getenv("SERIAL_BAUD", 9600))
+FALLBACK_MODE = os.getenv("FALLBACK_MODE", "False").lower() == "true"
 
 class HardwareBridge:
-    def __init__(self, port: str = "COM3", baudrate: int = 9600):
-        self.port = port
-        self.baudrate = baudrate
+    def __init__(self):
         self.serial_conn = None
-        self._connect()
-
-    def _connect(self):
-        try:
-            self.serial_conn = serial.Serial(self.port, self.baudrate, timeout=1)
-            time.sleep(2)  # Allow Arduino reset on connection
-            print(f"[Hardware] Successfully connected to microcontroller on {self.port}")
-        except Exception as e:
-            print(f"[Hardware Warning] Microcontroller not detected on {self.port} ({e}). Running in fallback mode.")
-            self.serial_conn = None
+        if not FALLBACK_MODE:
+            try:
+                self.serial_conn = serial.Serial(SERIAL_PORT, SERIAL_BAUD, timeout=1)
+                print(f"[Hardware] Connected to serial port {SERIAL_PORT} at {SERIAL_BAUD} baud.")
+            except Exception as e:
+                print(f"[Hardware Warning] Could not connect to {SERIAL_PORT}: {e}. Running in simulation/fallback mode.")
+                self.serial_conn = None
 
     def trigger_alert(self):
-        """Sends pulse trigger '1' to Arduino buzzer/relay circuit."""
         if self.serial_conn and self.serial_conn.is_open:
             try:
-                # Run in thread so serial I/O never blocks main event loop
-                threading.Thread(target=self._send_signal, daemon=True).start()
+                self.serial_conn.write(b'1\n')
+                print("[Hardware] Serial signal sent: b'1\n'")
             except Exception as e:
-                print(f"[Hardware Error] Failed to send trigger: {e}")
+                print(f"[Hardware Error] Failed to write to serial: {e}")
         else:
-            print("[Hardware Mock] BUZZER/RELAY TRIGGERED (No active serial port)")
-
-    def _send_signal(self):
-        try:
-            self.serial_conn.write(b'1\n')
-            time.sleep(1)
-            self.serial_conn.write(b'0\n')
-        except Exception as e:
-            print(f"[Hardware Error] Serial write failed: {e}")
+            print("[Hardware Simulation] Alert triggered (Fallback Mode: No physical device attached).")
 
 hardware_bridge = HardwareBridge()
