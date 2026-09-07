@@ -2,6 +2,7 @@ import os
 import time
 import queue
 import threading
+import base64
 import requests
 import cv2
 import numpy as np
@@ -12,12 +13,18 @@ from ultralytics import YOLO
 # 1. CONFIGURATION
 # ----------------------------------------------------
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-VIDEO_SOURCE = os.path.join(BASE_DIR, "media", "WhatsApp Video 2026-09-01 at 8.10.04 PM.mp4")
+VIDEO_SOURCE = os.path.join(BASE_DIR, "media", "WhatsApp Video 2026-08-29 at 11.14.59 PM.mp4")
 # VIDEO_SOURCE = 0  # Uncomment for live webcam
 
-CONF_THRESHOLD = 0.30
+CONF_THRESHOLD = 0.35
 MODEL_PATH = os.path.join(BASE_DIR, "yolov8n.pt")
 BACKEND_ENDPOINT = "http://127.0.0.1:8000/detection"
+
+# Change this:
+# API_KEY = "15cc08a7d6ef632763fdfc406cf8ead94e5db7c78fbb1621226fa024279f660e"
+
+# To the exact default defined in auth.py:
+API_KEY = "sima-drishti-secure-key-2026"
 
 TARGET_CLASSES = {0: "person", 2: "car", 7: "truck", 16: "dog"}
 
@@ -34,23 +41,30 @@ ZONE_COORDINATE_RATIOS = [
 payload_queue = queue.Queue()
 
 def backend_sender_worker():
-    """Consumes payloads from queue and dispatches to FastAPI asynchronously."""
+    """Consumes payloads from queue and dispatches to FastAPI with authentication."""
     session = requests.Session()
+    session.headers.update({
+        "X-API-Key": API_KEY,
+        "Content-Type": "application/json"
+    })
+
     while True:
         payload = payload_queue.get()
         if payload is None:
             break
         try:
             response = session.post(BACKEND_ENDPOINT, json=payload, timeout=1.0)
-            if response.status_code not in (200, 201):
+            if response.status_code == 200:
+                data = response.json()
+                if data.get("status") == "ALERT_CONFIRMED":
+                    print(f"🚨 [ALERT CONFIRMED BY FUSION ENGINE] Alert ID: {data.get('alert_id')}")
+            else:
                 print(f"⚠️ [Backend Error {response.status_code}]: {response.text}")
         except requests.exceptions.RequestException:
-            # Avoid crashing if the backend service isn't turned on yet
             pass
         finally:
             payload_queue.task_done()
 
-# Start background network thread
 network_thread = threading.Thread(target=backend_sender_worker, daemon=True)
 network_thread.start()
 
@@ -93,7 +107,7 @@ def run_pipeline():
     tripwire_polygon = Polygon(poly_points)
     poly_np = np.array(poly_points, np.int32).reshape((-1, 1, 2))
 
-    print(f"AI Stream active. Broadcasting alerts to: {BACKEND_ENDPOINT}")
+    print(f"AI Stream active. Broadcasting authenticated alerts to: {BACKEND_ENDPOINT}")
 
     while cap.isOpened():
         ret, frame = cap.read()
@@ -125,17 +139,26 @@ def run_pipeline():
                 bottom_center = Point(int((x1 + x2) / 2), y2)
                 in_zone = tripwire_polygon.contains(bottom_center)
 
-                # Explicitly cast to native Python types to satisfy FastAPI Pydantic schemas
+                # Generate base64 thumbnail crop for breach event
+                frame_b64 = None
+                if in_zone:
+                    crop = frame[max(0, y1):min(frame_height, y2), max(0, x1):min(frame_width, x2)]
+                    if crop.size > 0:
+                        _, buffer = cv2.imencode('.jpg', crop)
+                        frame_b64 = base64.b64encode(buffer).decode('utf-8')
+
+                # Schema formatted to match Backend's DetectionPayload
                 payload = {
                     "object_class": str(TARGET_CLASSES.get(cls_id, "unknown")),
                     "confidence": float(round(float(conf), 2)),
                     "bbox": [int(x1), int(y1), int(x2), int(y2)],
                     "track_id": int(track_id),
                     "in_zone": bool(in_zone),
+                    "zone_id": "ZONE_A",
+                    "frame_image": frame_b64,
                     "timestamp": int(time.time())
                 }
 
-                # Push to worker queue without dropping video frame rates
                 payload_queue.put(payload)
 
                 box_color = (0, 0, 255) if in_zone else (0, 255, 0)
@@ -143,13 +166,16 @@ def run_pipeline():
                 cv2.putText(frame, f"ID:{track_id} {payload['object_class']} {'[BREACH]' if in_zone else ''}",
                             (x1, y1 - 8), cv2.FONT_HERSHEY_SIMPLEX, 0.5, box_color, 2)
 
+        status_text = "CLAHE: ACTIVE" if was_enhanced else "CLAHE: OFF"
+        cv2.putText(frame, status_text, (20, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
+
         cv2.imshow("Sima-Drishti Surveillance Pipeline", frame)
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
 
     cap.release()
     cv2.destroyAllWindows()
-    payload_queue.put(None)  # stop worker
+    payload_queue.put(None)
 
 if __name__ == "__main__":
     run_pipeline()
