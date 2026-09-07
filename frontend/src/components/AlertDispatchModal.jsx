@@ -41,7 +41,7 @@ export default function AlertDispatchModal({ alert, onClose, onDispatch }) {
                 </span>
               </div>
               <p className="text-xs text-slate-400 font-mono">
-                EVENT ID: #{alert.id || 'EV-49201'} · SECTOR 04-NORTH
+                EVENT ID: #{alert.id || (alert.alert_id ? `EV-${alert.alert_id}` : 'EV-49201')} · {alert.sector || alert.zone || 'SECTOR 04-NORTH'}
               </p>
             </div>
           </div>
@@ -76,7 +76,7 @@ export default function AlertDispatchModal({ alert, onClose, onDispatch }) {
 
               {/* Timestamp Stamp */}
               <div className="absolute bottom-3 left-3 px-2 py-1 bg-black/80 font-mono text-[11px] text-red-400 rounded border border-red-500/40">
-                REC: 2026-03-29 06:24:12 UTC · 4K RTSP
+                REC: {alert.time || alert.timestamp || '2026-03-29 06:24:12 UTC'} · 4K RTSP
               </div>
             </div>
 
@@ -91,16 +91,16 @@ export default function AlertDispatchModal({ alert, onClose, onDispatch }) {
               </div>
               <div className="grid grid-cols-2 gap-2 text-slate-300 pt-1">
                 <div>
-                  <span className="text-slate-400">Class:</span> <span className="text-white font-bold">Person (Armed/Suspicious)</span>
+                  <span className="text-slate-400">Class:</span> <span className="text-white font-bold">{alert.target || (alert.object_class ? alert.object_class.toUpperCase() : 'Person (Armed/Suspicious)')}</span>
                 </div>
                 <div>
-                  <span className="text-slate-400">Confidence:</span> <span className="text-emerald-400 font-bold">94.2%</span>
+                  <span className="text-slate-400">Confidence:</span> <span className="text-emerald-400 font-bold">{alert.confidence ? `${Math.round(alert.confidence * 100)}%` : '94.2%'}</span>
                 </div>
                 <div>
                   <span className="text-slate-400">Velocity:</span> 1.4 m/s (Inbound)
                 </div>
                 <div>
-                  <span className="text-slate-400">Tripwire:</span> <span className="text-red-400 font-bold">ZONE 4A VIOLATED</span>
+                  <span className="text-slate-400">Tripwire:</span> <span className="text-red-400 font-bold">{alert.sector || alert.zone || 'ZONE 4A'} VIOLATED</span>
                 </div>
               </div>
             </div>
@@ -118,15 +118,15 @@ export default function AlertDispatchModal({ alert, onClose, onDispatch }) {
               <div className="space-y-1 text-slate-400">
                 <div className="flex justify-between">
                   <span>Sector:</span>
-                  <span className="text-white font-semibold">Sector 04-North (Forward Base)</span>
+                  <span className="text-white font-semibold">{alert.sector || alert.zone || 'Sector 04-North (Forward Base)'}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Coordinates:</span>
-                  <span className="text-blue-400 font-semibold">31.4392° N, 74.3298° E</span>
+                  <span className="text-blue-400 font-semibold">{alert.lat ? `${alert.lat}° N, ${alert.lng}° E` : '31.4392° N, 74.3298° E'}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Perimeter Distance:</span>
-                  <span className="text-amber-400 font-semibold">42 meters inside zone</span>
+                  <span className="text-amber-400 font-semibold">{alert.desc || '42 meters inside zone'}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Radio Band:</span>

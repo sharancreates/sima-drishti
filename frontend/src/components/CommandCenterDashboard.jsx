@@ -46,6 +46,44 @@ const mockAlerts = [
   }
 ];
 
+const BACKEND_URL = "http://127.0.0.1:8000";
+const WS_URL = "ws://127.0.0.1:8000/ws/alerts";
+
+function normalizeBackendAlert(data) {
+  const isPerson = (data.object_class || '').toLowerCase() === 'person';
+  const displayClass = data.object_class
+    ? (data.object_class.charAt(0).toUpperCase() + data.object_class.slice(1))
+    : 'Target';
+  const confidencePct = data.confidence ? `${Math.round(data.confidence * 100)}%` : '94%';
+  const timeStr = data.timestamp 
+    ? (new Date(data.timestamp).toISOString().substring(11, 19) + ' UTC')
+    : (new Date().toISOString().substring(11, 19) + ' UTC');
+
+  const fullImageUrl = data.thumbnail 
+    ? (data.thumbnail.startsWith('http') ? data.thumbnail : `${BACKEND_URL}${data.thumbnail}`)
+    : (data.image || 'https://lh3.googleusercontent.com/aida-public/AB6AXuCumfyk0VITQQhCi4VRbB6Ra_80yobpm3tx3tRvbC5If2U4QFwJXR2LNXSPycdk9z8QdkUGw0DjIoVypH4kusiVPBqS8dCzJU0VRvNgFUZ8uitNB-A5SXs89tdvg4H6dbTED0v8MHKzRiucen7u8uZhhLvhLykP3dauxH3kK2gy5wS0pOip7XaKooLhHhE0FKAx5R0WfP5MQArkHR-ER4aVNSl2bubJSmeHaKUoGdkbm85tRkrsLzM');
+
+  return {
+    id: data.alert_id ? `EV-${data.alert_id}` : (data.id || `EV-${Math.floor(Math.random() * 9000 + 1000)}`),
+    alert_id: data.alert_id || data.id,
+    title: data.title || (isPerson ? 'TRIPWIRE BREACH DETECTED' : `${displayClass.toUpperCase()} PERIMETER ALERT`),
+    sector: data.zone ? `${data.zone.toUpperCase()} // SECTOR` : (data.sector || 'SECTOR 04-NORTH'),
+    zone: data.zone || data.sector || 'Sector_Alpha',
+    time: timeStr,
+    timestamp: data.timestamp || new Date().toISOString(),
+    severity: data.severity || (isPerson ? 'critical' : 'warning'),
+    target: data.target || `${displayClass} ${confidencePct}`,
+    object_class: data.object_class || 'person',
+    confidence: data.confidence || 0.94,
+    desc: data.desc || `Target ${displayClass.toLowerCase()} crossed tactical perimeter vector. Coordinates: ${data.lat || 31.4392}° N / ${data.lng || 74.3298}° E.`,
+    image: fullImageUrl,
+    thumbnail: data.thumbnail || fullImageUrl,
+    lat: data.lat || 31.4392,
+    lng: data.lng || 74.3298,
+    isLive: data.isLive ?? false
+  };
+}
+
 export default function CommandCenterDashboard({ onSelectAlert }) {
   const [activeCam, setActiveCam] = useState('cam-04');
   const [viewMode, setViewMode] = useState('optical'); // optical, thermal, night
@@ -53,6 +91,45 @@ export default function CommandCenterDashboard({ onSelectAlert }) {
   const [clock, setClock] = useState('06:24:18 UTC');
   const [date, setDate] = useState('2026-03-29');
 
+  // Real-time dynamic state
+  const [alerts, setAlerts] = useState(mockAlerts);
+  const [connectionStatus, setConnectionStatus] = useState('connecting'); // 'connected' | 'connecting' | 'offline'
+  const [backendStats, setBackendStats] = useState({
+    total_alerts: 0,
+    alerts_last_24h: 0,
+    active_zones: 4,
+    hardware_status: 'standby'
+  });
+  const [alarmActive, setAlarmActive] = useState(false);
+
+  // Tactical sound synthesizer
+  const playTacticalBeep = (freq = 880, duration = 0.25) => {
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(freq, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(freq / 2, ctx.currentTime + duration);
+      gain.gain.setValueAtTime(0.12, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + duration);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + duration);
+    } catch {
+      // Audio autoplay policy fallback
+    }
+  };
+
+  const toggleAlarm = () => {
+    setAlarmActive(prev => !prev);
+    playTacticalBeep(920, 0.4);
+  };
+
+  // Clock interval
   useEffect(() => {
     const updateTime = () => {
       const now = new Date();
@@ -62,6 +139,112 @@ export default function CommandCenterDashboard({ onSelectAlert }) {
     updateTime();
     const interval = setInterval(updateTime, 1000);
     return () => clearInterval(interval);
+  }, []);
+
+  // REST Synchronization & WebSocket Real-time Ingestion
+  useEffect(() => {
+    let ws = null;
+    let reconnectTimeout = null;
+    let isMounted = true;
+
+    const fetchInitialData = async () => {
+      try {
+        const [alertsRes, analyticsRes] = await Promise.allSettled([
+          fetch(`${BACKEND_URL}/alerts?limit=25`),
+          fetch(`${BACKEND_URL}/analytics`)
+        ]);
+
+        if (!isMounted) return;
+
+        if (analyticsRes.status === 'fulfilled' && analyticsRes.value.ok) {
+          const stats = await analyticsRes.value.json();
+          setBackendStats(stats);
+        }
+
+        if (alertsRes.status === 'fulfilled' && alertsRes.value.ok) {
+          const dbAlerts = await alertsRes.value.json();
+          if (Array.isArray(dbAlerts) && dbAlerts.length > 0) {
+            const normalized = dbAlerts.map(normalizeBackendAlert);
+            setAlerts(prev => {
+              const ids = new Set(normalized.map(a => a.id));
+              const nonDuplicateDefaults = prev.filter(a => !ids.has(a.id));
+              return [...normalized, ...nonDuplicateDefaults];
+            });
+          }
+        }
+      } catch (err) {
+        console.warn('[NOC Telemetry] Backend REST service offline, operating in simulation mode:', err);
+      }
+    };
+
+    fetchInitialData();
+
+    const connectWebSocket = () => {
+      if (!isMounted) return;
+      setConnectionStatus('connecting');
+
+      try {
+        ws = new WebSocket(WS_URL);
+
+        ws.onopen = () => {
+          if (!isMounted) return;
+          console.log('[NOC WebSocket] Connected to tactical stream:', WS_URL);
+          setConnectionStatus('connected');
+        };
+
+        ws.onmessage = (event) => {
+          if (!isMounted) return;
+          try {
+            const payload = JSON.parse(event.data);
+            console.log('[NOC WebSocket] Breach event broadcast received:', payload);
+            const liveAlert = normalizeBackendAlert({ ...payload, isLive: true });
+            
+            // Trigger tactical audio chime on intrusion
+            playTacticalBeep(980, 0.35);
+
+            setAlerts(prev => [liveAlert, ...prev.slice(0, 49)]);
+            setBackendStats(prev => ({
+              ...prev,
+              total_alerts: (prev.total_alerts || 0) + 1,
+              alerts_last_24h: (prev.alerts_last_24h || 0) + 1
+            }));
+          } catch (e) {
+            console.error('[NOC WebSocket] Failed parsing alert broadcast:', e);
+          }
+        };
+
+        ws.onclose = () => {
+          if (!isMounted) return;
+          console.warn('[NOC WebSocket] Disconnected from server. Reconnecting in 3.5s...');
+          setConnectionStatus('offline');
+          reconnectTimeout = setTimeout(connectWebSocket, 3500);
+        };
+
+        ws.onerror = (err) => {
+          if (!isMounted) return;
+          console.warn('[NOC WebSocket] Connection error:', err);
+          setConnectionStatus('offline');
+          try { ws.close(); } catch {}
+        };
+      } catch (e) {
+        if (!isMounted) return;
+        setConnectionStatus('offline');
+        reconnectTimeout = setTimeout(connectWebSocket, 3500);
+      }
+    };
+
+    connectWebSocket();
+
+    return () => {
+      isMounted = false;
+      if (ws) {
+        ws.onclose = null; // Prevent reconnect loop
+        try { ws.close(); } catch {}
+      }
+      if (reconnectTimeout) {
+        clearTimeout(reconnectTimeout);
+      }
+    };
   }, []);
 
   return (
@@ -123,15 +306,32 @@ export default function CommandCenterDashboard({ onSelectAlert }) {
 
         {/* Right: Operational Status Pill & Controls */}
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-mono">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
-            <span className="font-semibold tracking-wide">SYSTEM OPERATIONAL</span>
-          </div>
+          {connectionStatus === 'connected' ? (
+            <div className="flex items-center gap-2 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-mono shadow-[0_0_10px_rgba(16,185,129,0.2)]">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+              <span className="font-semibold tracking-wide">SYSTEM ONLINE // WS LIVE</span>
+            </div>
+          ) : connectionStatus === 'connecting' ? (
+            <div className="flex items-center gap-2 px-2.5 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-mono">
+              <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
+              <span className="font-semibold tracking-wide">CONNECTING TO NOC...</span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 px-2.5 py-1 rounded-full bg-red-500/10 border border-red-500/30 text-red-400 text-xs font-mono">
+              <span className="w-2 h-2 rounded-full bg-red-400"></span>
+              <span className="font-semibold tracking-wide">OFFLINE // SIMULATION MODE</span>
+            </div>
+          )}
 
           <div className="flex items-center gap-1">
             <button
-              title="Sound Alarm"
-              className="h-8 w-8 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 flex items-center justify-center text-slate-300 transition"
+              onClick={toggleAlarm}
+              title={alarmActive ? "Siren Alarm Triggered (Click to Mute)" : "Sound Tactical Perimeter Siren"}
+              className={`h-8 w-8 rounded border flex items-center justify-center transition ${
+                alarmActive
+                  ? 'bg-red-600 text-white border-red-400 shadow-[0_0_12px_rgba(239,68,68,0.6)] animate-pulse'
+                  : 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-300'
+              }`}
             >
               <Volume2 className="w-4 h-4" />
             </button>
@@ -354,15 +554,22 @@ export default function CommandCenterDashboard({ onSelectAlert }) {
               <BellRing className="w-4 h-4 text-red-400 animate-bounce" />
               <span>LIVE INCIDENT & THREAT FEED</span>
             </div>
-            <div className="flex items-center gap-1 text-[10px] font-mono text-slate-400">
-              <span className="w-2 h-2 rounded-full bg-red-500 animate-ping"></span>
-              <span className="text-red-400 font-bold">3 ACTIVE</span>
+            <div className="flex items-center gap-1.5 text-[10px] font-mono text-slate-400">
+              <span className="flex items-center gap-1">
+                <span className="w-2 h-2 rounded-full bg-red-500 animate-ping"></span>
+                <span className="text-red-400 font-bold">{alerts.length} ACTIVE</span>
+              </span>
+              {connectionStatus === 'connected' && (
+                <span className="px-1.5 py-0.5 rounded bg-emerald-950/80 text-emerald-300 border border-emerald-600 text-[9px] font-bold">
+                  WS LIVE
+                </span>
+              )}
             </div>
           </div>
 
           {/* Alerts List */}
           <div className="flex-1 overflow-y-auto p-3 space-y-3">
-            {mockAlerts.map(alert => (
+            {alerts.map(alert => (
               <div
                 key={alert.id}
                 onClick={() => onSelectAlert(alert)}
@@ -383,6 +590,11 @@ export default function CommandCenterDashboard({ onSelectAlert }) {
                     <span className="font-mono text-xs font-bold text-white tracking-wider">
                       {alert.title}
                     </span>
+                    {alert.isLive && (
+                      <span className="text-[8px] font-mono px-1.5 py-0.5 rounded bg-red-600 text-white font-bold tracking-wider animate-pulse">
+                        LIVE BREACH
+                      </span>
+                    )}
                   </div>
                   <span className="text-[10px] font-mono text-slate-400">{alert.time}</span>
                 </div>
