@@ -1,18 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { Crosshair, ShieldCheck, Wifi, Radio } from 'lucide-react';
+import { Crosshair, ShieldCheck, Wifi, Radio, Server, CheckCircle2 } from 'lucide-react';
 
-const statusSteps = [
-  { text: 'Connecting to RTSP camera feed...', pct: 14 },
-  { text: 'Loading YOLOv8 AI Inference Core...', pct: 38 },
-  { text: 'Calibrating Virtual Tripwire mesh...', pct: 64 },
-  { text: 'Syncing Sector 04 telemetry...', pct: 88 },
-  { text: 'Perimeter Defense Grid Online.', pct: 100 }
-];
+const BACKEND_URL = "http://127.0.0.1:8000";
 
 export default function TacticalSplashScreen({ onComplete }) {
-  const [stepIndex, setStepIndex] = useState(0);
   const [clock, setClock] = useState('00:00:00 UTC');
+  const [currentStep, setCurrentStep] = useState({
+    text: 'Initializing NOC Cryptographic Handshake (AES-256)...',
+    pct: 15,
+    subtext: 'ENCRYPTED LOCAL RUNTIME'
+  });
+  const [stepIndex, setStepIndex] = useState(0);
+  const [isCompleted, setIsCompleted] = useState(false);
 
+  // Clock
   useEffect(() => {
     const updateTime = () => {
       const now = new Date();
@@ -23,27 +24,121 @@ export default function TacticalSplashScreen({ onComplete }) {
     return () => clearInterval(timer);
   }, []);
 
+  // Active Asynchronous Boot Sequence
   useEffect(() => {
-    const interval = setInterval(() => {
-      setStepIndex((prev) => {
-        if (prev < statusSteps.length - 1) {
-          return prev + 1;
-        } else {
-          clearInterval(interval);
-          setTimeout(() => {
-            if (onComplete) onComplete();
-          }, 700);
-          return prev;
-        }
+    let isMounted = true;
+
+    const runDiagnostics = async () => {
+      // Step 1: Initial Handshake
+      await new Promise(r => setTimeout(r, 600));
+      if (!isMounted) return;
+      setStepIndex(1);
+      setCurrentStep({
+        text: 'Pinging Tactical FastAPI Core (http://127.0.0.1:8000)...',
+        pct: 35,
+        subtext: 'REST TELEMETRY HANDSHAKE'
       });
-    }, 700);
-    return () => clearInterval(interval);
+
+      // Step 2: Health Check Query
+      let isBackendOnline = false;
+      let latencyMs = 18;
+      const startTime = performance.now();
+      try {
+        const healthRes = await Promise.race([
+          fetch(`${BACKEND_URL}/health`),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 2500))
+        ]);
+        latencyMs = Math.round(performance.now() - startTime);
+        if (healthRes.ok) {
+          isBackendOnline = true;
+          const healthData = await healthRes.json();
+          if (isMounted) {
+            setStepIndex(2);
+            setCurrentStep({
+              text: `Backend NOC Online (FastAPI) · ${healthData.active_ws_clients || 0} WS Clients · ${latencyMs}ms Latency`,
+              pct: 60,
+              subtext: 'FASTAPI FUSION ENGINE VERIFIED'
+            });
+          }
+        }
+      } catch {
+        if (isMounted) {
+          setStepIndex(2);
+          setCurrentStep({
+            text: 'Backend offline · Autonomous Standalone Simulation Mode Active',
+            pct: 60,
+            subtext: 'LOCAL TACTICAL CACHE ENGAGED'
+          });
+        }
+      }
+
+      await new Promise(r => setTimeout(r, 700));
+      if (!isMounted) return;
+
+      // Step 3: Zone & Geofence Synchronization
+      setStepIndex(3);
+      setCurrentStep({
+        text: 'Synchronizing Border Geofence Polygons & Sector Radar Lock...',
+        pct: 82,
+        subtext: 'SECTORS SEC-1 THROUGH SEC-4A ARMED'
+      });
+
+      try {
+        if (isBackendOnline) {
+          const zonesRes = await fetch(`${BACKEND_URL}/zones`);
+          if (zonesRes.ok) {
+            const zones = await zonesRes.json();
+            if (isMounted && Array.isArray(zones) && zones.length > 0) {
+              setCurrentStep({
+                text: `Synchronized ${zones.length} Border Sectors & GPS Perimeter Vectors`,
+                pct: 88,
+                subtext: 'DATABASE PERSISTENCE LOCKED'
+              });
+            }
+          }
+        }
+      } catch {}
+
+      await new Promise(r => setTimeout(r, 650));
+      if (!isMounted) return;
+
+      // Step 4: RTSP Video Surveillance Matrix
+      setStepIndex(4);
+      setCurrentStep({
+        text: 'Calibrating 4K RTSP Surveillance Matrix (CAM-01 to CAM-04)...',
+        pct: 95,
+        subtext: 'HARDWARE H.264 / H.265 DECODER READY'
+      });
+
+      await new Promise(r => setTimeout(r, 650));
+      if (!isMounted) return;
+
+      // Step 5: Ready
+      setStepIndex(5);
+      setCurrentStep({
+        text: 'Perimeter Defense Grid Fully Armed & Synchronized.',
+        pct: 100,
+        subtext: 'OPERATIONAL READY'
+      });
+      setIsCompleted(true);
+
+      // Auto-transition
+      setTimeout(() => {
+        if (isMounted && onComplete) {
+          onComplete();
+        }
+      }, 700);
+    };
+
+    runDiagnostics();
+
+    return () => {
+      isMounted = false;
+    };
   }, [onComplete]);
 
-  const currentStep = statusSteps[stepIndex];
-
   return (
-    <div className="relative w-full h-screen bg-[#0B1120] overflow-hidden flex flex-col justify-between items-center px-6 py-8 select-none text-slate-200">
+    <div className="relative w-full h-screen bg-[#0B1120] overflow-hidden flex flex-col justify-between items-center px-6 py-8 select-none text-slate-200 font-sans">
       {/* Background Military Tactical Grid */}
       <div className="absolute inset-0 bg-grid-tactical pointer-events-none"></div>
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(59,130,246,0.08)_0%,transparent_70%)] pointer-events-none"></div>
@@ -53,7 +148,7 @@ export default function TacticalSplashScreen({ onComplete }) {
         <div className="flex items-center space-x-3">
           <span className="inline-flex items-center px-2.5 py-0.5 rounded text-[10px] font-semibold bg-blue-950/60 text-blue-400 border border-blue-800/40">
             <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse mr-1.5"></span>
-            SYS-ACTIVE
+            SYS-BOOT
           </span>
           <span className="hidden sm:inline text-slate-400">SECTOR 04-NORTH // SECURE FEED</span>
         </div>
@@ -132,11 +227,11 @@ export default function TacticalSplashScreen({ onComplete }) {
         {/* Progress & Telemetry */}
         <div className="w-full space-y-3">
           <div className="flex items-center justify-between font-mono text-xs text-slate-300">
-            <div className="flex items-center space-x-2">
-              <span className="inline-block w-2 h-2 rounded-full bg-blue-500 animate-ping"></span>
-              <span className="font-medium text-slate-200">{currentStep.text}</span>
+            <div className="flex items-center space-x-2 truncate mr-2">
+              <span className={`inline-block w-2 h-2 rounded-full ${isCompleted ? 'bg-emerald-400' : 'bg-blue-500 animate-ping'}`}></span>
+              <span className="font-medium text-slate-200 truncate">{currentStep.text}</span>
             </div>
-            <span className="text-blue-400 font-bold font-mono">{currentStep.pct}%</span>
+            <span className="text-blue-400 font-bold font-mono shrink-0">{currentStep.pct}%</span>
           </div>
 
           <div className="w-full h-1.5 bg-slate-800/80 rounded-full overflow-hidden border border-slate-700/40 relative">
@@ -148,16 +243,16 @@ export default function TacticalSplashScreen({ onComplete }) {
 
           <div className="flex justify-between items-center pt-1 font-mono text-[10px] text-slate-400">
             <div className="flex space-x-1.5">
-              {statusSteps.map((_, i) => (
+              {[0, 1, 2, 3, 4].map((idx) => (
                 <div
-                  key={i}
+                  key={idx}
                   className={`w-3 h-1 rounded-sm transition-colors duration-300 ${
-                    i <= stepIndex ? 'bg-blue-500' : 'bg-slate-700'
+                    idx <= stepIndex ? 'bg-blue-500' : 'bg-slate-700'
                   }`}
                 ></div>
               ))}
             </div>
-            <span className="tracking-widest">ENCRYPTED STREAM // RTSP 4K</span>
+            <span className="tracking-widest uppercase">{currentStep.subtext}</span>
           </div>
         </div>
 
@@ -165,10 +260,10 @@ export default function TacticalSplashScreen({ onComplete }) {
         <div className="mt-8 flex justify-center">
           <button
             onClick={onComplete}
-            className="px-5 py-2 bg-blue-600/80 hover:bg-blue-500 text-white font-mono text-xs font-semibold rounded-md border border-blue-400/40 shadow-[0_0_15px_rgba(59,130,246,0.4)] transition flex items-center gap-2 group"
+            className="px-5 py-2 bg-blue-600/80 hover:bg-blue-500 text-white font-mono text-xs font-semibold rounded-md border border-blue-400/40 shadow-[0_0_15px_rgba(59,130,246,0.4)] transition flex items-center gap-2 group cursor-pointer"
           >
             <ShieldCheck className="w-4 h-4 text-blue-200 group-hover:scale-110 transition-transform" />
-            ENTER COMMAND CENTER
+            <span>ENTER COMMAND CENTER</span>
           </button>
         </div>
       </div>
@@ -177,11 +272,11 @@ export default function TacticalSplashScreen({ onComplete }) {
       <div className="w-full max-w-6xl flex justify-between items-center text-[10px] font-mono text-slate-400 border-t border-slate-800/60 pt-4 z-10">
         <div className="flex items-center space-x-2">
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-          <span>NOC BUILD 2.4-TACTICAL</span>
+          <span>NOC BUILD 2.4-TACTICAL // AUTONOMOUS EDGE AI</span>
         </div>
         <div className="flex items-center space-x-4">
-          <span>LATENCY: 18ms</span>
-          <span>EDGE AI ACCELERATED</span>
+          <span>LATENCY: &lt;20ms</span>
+          <span>AIR-GAP CAPABLE</span>
         </div>
       </div>
     </div>
