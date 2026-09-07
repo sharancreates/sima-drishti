@@ -16,7 +16,7 @@ export default function App() {
     severity: 'critical',
     target: 'Person (Armed) 94%',
     desc: 'Target crossed physical boundary tripwire vector #4. Heading South-East at 1.4m/s.',
-    image: 'https://lh3.googleusercontent.com/aida-public/AB6AXuCumfyk0VITQQhCi4VRbB6Ra_80yobpm3tx3tRvbC5If2U4QFwJXR2LNXSPycdk9z8QdkUGw0DjIoVypH4kusiVPBqS8dCzJU0VRvNgFUZ8uitNB-A5SXs89tdvg4H6dbTED0v8MHKzRiucen7u8uZhhLvhLykP3dauxH3kK2gy5wS0pOip7XaKooLhHhE0FKAx5R0WfP5MQArkHR-ER4aVNSl2bubJSmeHaKUoGdkbm85tRkrsLzM'
+    image: '/videos/cam_04_north_perimeter.mp4'
   };
 
   return (

@@ -77,11 +77,25 @@ export default function AlertDispatchModal({ alert, onClose, onDispatch }) {
           {/* Left: Snapshot & AI Classification */}
           <div className="lg:col-span-7 flex flex-col gap-4">
             <div className="relative rounded-lg overflow-hidden border border-slate-700 bg-black aspect-video flex items-center justify-center">
-              <img
-                src={alert.image || "https://lh3.googleusercontent.com/aida-public/AB6AXuCumfyk0VITQQhCi4VRbB6Ra_80yobpm3tx3tRvbC5If2U4QFwJXR2LNXSPycdk9z8QdkUGw0DjIoVypH4kusiVPBqS8dCzJU0VRvNgFUZ8uitNB-A5SXs89tdvg4H6dbTED0v8MHKzRiucen7u8uZhhLvhLykP3dauxH3kK2gy5wS0pOip7XaKooLhHhE0FKAx5R0WfP5MQArkHR-ER4aVNSl2bubJSmeHaKUoGdkbm85tRkrsLzM"}
-                alt="Breach Snapshot"
-                className="w-full h-full object-cover"
-              />
+              {(alert.image?.endsWith('.mp4') || alert.thumbnail?.endsWith('.mp4')) ? (
+                <video
+                  src={alert.image || alert.thumbnail || '/videos/cam_04_north_perimeter.mp4'}
+                  autoPlay
+                  loop
+                  muted
+                  playsInline
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <img
+                  src={alert.thumbnail || alert.image || "/videos/cam_04_north_perimeter.mp4"}
+                  alt="Breach Snapshot"
+                  className="w-full h-full object-cover"
+                  onError={(e) => {
+                    e.currentTarget.style.display = 'none';
+                  }}
+                />
+              )}
               {/* Tripwire & Bounding Overlays */}
               <div className="absolute inset-0 pointer-events-none">
                 <div className="absolute left-0 right-0 top-[60%] h-[2px] tripwire-line"></div>
