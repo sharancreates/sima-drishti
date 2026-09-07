@@ -7,6 +7,7 @@ class ZoneCreate(BaseModel):
     camera_id: str
     lat: float
     lng: float
+    radius_meters: Optional[float] = 500.0
 
 class ZoneOut(ZoneCreate):
     id: int
@@ -31,6 +32,8 @@ class AlertOut(BaseModel):
     thumbnail: str
     lat: float
     lng: float
+    confidence: float
+    status: str = "PENDING"
     timestamp: str
 
     class Config:

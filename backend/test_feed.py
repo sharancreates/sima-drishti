@@ -13,6 +13,19 @@ def simulate_detection(payload):
     headers = {"X-API-Key": API_KEY}
     response = requests.post(f"{BASE_URL}/detection", json=payload, headers=headers)
     print(f"[{payload['object_class']} | Track ID: {payload['track_id']}] -> Status: {response.status_code}, Response: {response.json()}")
+    return response
+
+def test_dispatch(alert_id):
+    headers = {"X-API-Key": API_KEY, "Content-Type": "application/json"}
+    payload = {
+        "alert_id": alert_id,
+        "unit_id": "alpha",
+        "target_sector": "Sector 04-North",
+        "notes": "Automated QRT dispatch verification"
+    }
+    response = requests.post(f"{BASE_URL}/dispatch", json=payload, headers=headers)
+    print(f"[Dispatch Test | Alert ID: {alert_id}] -> Status: {response.status_code}, Response: {response.json()}")
+    return response
 
 def run_tests():
     test_health()
@@ -54,8 +67,14 @@ def run_tests():
 
     print("\n--- Test 4: Fetch Alerts from Database ---")
     alerts_response = requests.get(f"{BASE_URL}/alerts")
-    print(f"Total alerts in DB: {len(alerts_response.json())}")
-    print(json.dumps(alerts_response.json(), indent=2))
+    alerts = alerts_response.json()
+    print(f"Total alerts in DB: {len(alerts)}")
+    print(json.dumps(alerts, indent=2))
+
+    if alerts and len(alerts) > 0:
+        latest_alert_id = alerts[0]["alert_id"]
+        print(f"\n--- Test 5: Simulating QRT Dispatch for Alert ID: {latest_alert_id} ---")
+        test_dispatch(latest_alert_id)
 
 if __name__ == "__main__":
     run_tests()

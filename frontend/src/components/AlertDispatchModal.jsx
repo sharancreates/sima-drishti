@@ -17,7 +17,10 @@ export default function AlertDispatchModal({ alert, onClose, onDispatch }) {
       const targetId = alert.rawId || alert.alert_id || (alert.id ? parseInt(String(alert.id).replace(/\D/g, '') || '1', 10) : 1);
       const res = await fetch("http://127.0.0.1:8000/dispatch", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "X-API-Key": "sima-drishti-secure-key-2026"
+        },
         body: JSON.stringify({
           alert_id: targetId,
           unit_id: selectedUnit,

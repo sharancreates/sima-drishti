@@ -38,13 +38,14 @@ payload_queue = queue.Queue()
 def backend_sender_worker():
     """Consumes payloads from queue and dispatches to FastAPI with authentication."""
     session = requests.Session()
-    session.headers.update({"X-API-Key": API_KEY})
+    api_key_header = {"X-API-Key": "sima-drishti-secure-key-2026"}
+    session.headers.update(api_key_header)
     while True:
         payload = payload_queue.get()
         if payload is None:
             break
         try:
-            response = session.post(BACKEND_ENDPOINT, json=payload, timeout=1.0)
+            response = session.post(BACKEND_ENDPOINT, json=payload, headers=api_key_header, timeout=1.0)
             if response.status_code == 200:
                 data = response.json()
                 if data.get("status") == "ALERT_CONFIRMED":

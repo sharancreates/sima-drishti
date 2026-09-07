@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, text
 
 from app.database import Base, engine, get_db
 from app.models import AlertLog, Zone
@@ -26,9 +26,42 @@ Base.metadata.create_all(bind=engine)
 THUMBNAIL_DIR = "static/thumbnails"
 os.makedirs(THUMBNAIL_DIR, exist_ok=True)
 
+def seed_default_zone():
+    """Ensures DB schema compatibility and seeds default Punjab border zone if absent."""
+    with engine.connect() as conn:
+        try:
+            conn.execute(text("ALTER TABLE alerts ADD COLUMN status VARCHAR DEFAULT 'PENDING'"))
+            conn.commit()
+        except Exception:
+            pass
+        try:
+            conn.execute(text("ALTER TABLE zones ADD COLUMN radius_meters FLOAT DEFAULT 500.0"))
+            conn.commit()
+        except Exception:
+            pass
+
+    db = next(get_db())
+    try:
+        existing = db.query(Zone).filter((Zone.zone_id == "ZONE_A") | (Zone.name == "ZONE_A")).first()
+        if not existing:
+            default_zone = Zone(
+                zone_id="ZONE_A",
+                name="ZONE_A",
+                camera_id="cam-04",
+                lat=31.4392,
+                lng=74.3298,
+                radius_meters=500.0
+            )
+            db.add(default_zone)
+            db.commit()
+            print("[Database Seed] Seeded default zone: ZONE_A (Lat: 31.4392, Lng: 74.3298, Radius: 500m)")
+    finally:
+        db.close()
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     cleanup_old_thumbnails()
+    seed_default_zone()
     yield
 
 app = FastAPI(
@@ -36,6 +69,10 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan
 )
+
+@app.on_event("startup")
+def startup_event():
+    seed_default_zone()
 
 app.add_middleware(
     CORSMiddleware,
@@ -60,11 +97,15 @@ class ConnectionManager:
             self.active_connections.remove(websocket)
 
     async def broadcast(self, message: dict):
-        for connection in self.active_connections:
+        dead_connections: List[WebSocket] = []
+        for connection in list(self.active_connections):
             try:
                 await connection.send_text(json.dumps(message))
             except Exception:
-                pass
+                dead_connections.append(connection)
+
+        for dead in dead_connections:
+            self.disconnect(dead)
 
 manager = ConnectionManager()
 
@@ -200,6 +241,7 @@ async def receive_detection(payload: DetectionPayload, db: Session = Depends(get
             lat=lat,
             lng=lng,
             confidence=payload.confidence,
+            status="PENDING",
             timestamp=datetime.utcnow()
         )
         db.add(new_alert)
@@ -215,6 +257,8 @@ async def receive_detection(payload: DetectionPayload, db: Session = Depends(get
             "thumbnail": new_alert.thumbnail,
             "lat": new_alert.lat,
             "lng": new_alert.lng,
+            "confidence": new_alert.confidence,
+            "status": new_alert.status,
             "timestamp": new_alert.timestamp.isoformat()
         }
         await manager.broadcast(alert_data)
@@ -234,12 +278,18 @@ def get_alerts(skip: int = 0, limit: int = 50, db: Session = Depends(get_db)):
             thumbnail=a.thumbnail,
             lat=a.lat,
             lng=a.lng,
+            confidence=a.confidence,
+            status=getattr(a, "status", "PENDING"),
             timestamp=a.timestamp.isoformat()
         ) for a in alerts
     ]
 
 @app.post("/dispatch", response_model=DispatchResponse)
-async def dispatch_unit(req: DispatchRequest, db: Session = Depends(get_db)):
+async def dispatch_unit(
+    req: DispatchRequest, 
+    db: Session = Depends(get_db), 
+    api_key: str = Depends(verify_api_key)
+):
     eta_map = {
         "alpha": "2m (QRT Alpha)",
         "bravo": "5m (QRT Bravo)",
@@ -249,6 +299,13 @@ async def dispatch_unit(req: DispatchRequest, db: Session = Depends(get_db)):
     dispatch_id = f"DSP-{int(datetime.utcnow().timestamp())}"
     now_iso = datetime.utcnow().isoformat()
 
+    # Query alert by ID and update status to DISPATCHED
+    alert = db.query(AlertLog).filter(AlertLog.id == req.alert_id).first()
+    if alert:
+        alert.status = "DISPATCHED"
+        db.commit()
+        db.refresh(alert)
+
     dispatch_event = {
         "event_type": "QRT_DISPATCHED",
         "dispatch_id": dispatch_id,
@@ -256,6 +313,7 @@ async def dispatch_unit(req: DispatchRequest, db: Session = Depends(get_db)):
         "unit_id": req.unit_id,
         "target_sector": req.target_sector,
         "eta": eta,
+        "status": "DISPATCHED",
         "timestamp": now_iso
     }
     await manager.broadcast(dispatch_event)
