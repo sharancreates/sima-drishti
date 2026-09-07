@@ -15,7 +15,7 @@ from sqlalchemy import func
 
 from app.database import Base, engine, get_db
 from app.models import AlertLog, Zone
-from app.schemas import DetectionPayload, AlertOut, ZoneCreate, ZoneOut
+from app.schemas import DetectionPayload, AlertOut, ZoneCreate, ZoneOut, DispatchRequest, DispatchResponse
 from app.fusion import fusion_engine
 from app.hardware import hardware_bridge
 from app.utils import cleanup_old_thumbnails
@@ -184,6 +184,37 @@ def get_alerts(skip: int = 0, limit: int = 50, db: Session = Depends(get_db)):
             timestamp=a.timestamp.isoformat()
         ) for a in alerts
     ]
+
+@app.post("/dispatch", response_model=DispatchResponse)
+async def dispatch_unit(req: DispatchRequest, db: Session = Depends(get_db)):
+    eta_map = {
+        "alpha": "2m (QRT Alpha)",
+        "bravo": "5m (QRT Bravo)",
+        "drone": "45s (UAV Drone Interceptor)"
+    }
+    eta = eta_map.get(req.unit_id.lower(), "3m (Tactical Unit)")
+    dispatch_id = f"DSP-{int(datetime.utcnow().timestamp())}"
+    now_iso = datetime.utcnow().isoformat()
+
+    dispatch_event = {
+        "event_type": "QRT_DISPATCHED",
+        "dispatch_id": dispatch_id,
+        "alert_id": req.alert_id,
+        "unit_id": req.unit_id,
+        "target_sector": req.target_sector,
+        "eta": eta,
+        "timestamp": now_iso
+    }
+    await manager.broadcast(dispatch_event)
+
+    return DispatchResponse(
+        status="DISPATCH_CONFIRMED",
+        dispatch_id=dispatch_id,
+        alert_id=req.alert_id,
+        unit_id=req.unit_id,
+        eta=eta,
+        timestamp=now_iso
+    )
 
 if __name__ == "__main__":
     uvicorn.run(app, host="127.0.0.1", port=8000)

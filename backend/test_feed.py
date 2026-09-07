@@ -3,13 +3,15 @@ import requests
 import json
 
 BASE_URL = "http://127.0.0.1:8000"
+API_KEY = "sima-drishti-secure-key-2026"
 
 def test_health():
     response = requests.get(f"{BASE_URL}/health")
     print(f"[Health Check] Status: {response.status_code}, Body: {response.json()}")
 
 def simulate_detection(payload):
-    response = requests.post(f"{BASE_URL}/detection", json=payload)
+    headers = {"X-API-Key": API_KEY}
+    response = requests.post(f"{BASE_URL}/detection", json=payload, headers=headers)
     print(f"[{payload['object_class']} | Track ID: {payload['track_id']}] -> Status: {response.status_code}, Response: {response.json()}")
 
 def run_tests():

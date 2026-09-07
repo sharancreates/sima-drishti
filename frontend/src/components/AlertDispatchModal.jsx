@@ -11,13 +11,31 @@ export default function AlertDispatchModal({ alert, onClose, onDispatch }) {
 
   if (!alert) return null;
 
-  const handleDispatch = () => {
+  const handleDispatch = async () => {
     setIsDispatching(true);
-    setTimeout(() => {
+    try {
+      const targetId = alert.rawId || alert.alert_id || (alert.id ? parseInt(String(alert.id).replace(/\D/g, '') || '1', 10) : 1);
+      const res = await fetch("http://127.0.0.1:8000/dispatch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          alert_id: targetId,
+          unit_id: selectedUnit,
+          target_sector: alert.sector || alert.zone || 'Sector 04-North',
+          notes: `Tactical QRT intercepted for target: ${alert.target || alert.object_class || 'Intruder'}`
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        console.log('[NOC Dispatch Confirmed]:', data);
+      }
+    } catch (err) {
+      console.warn('[NOC Dispatch] Backend unreachable, executing local tactical dispatch:', err);
+    } finally {
       setIsDispatching(false);
       setDispatched(true);
       if (onDispatch) onDispatch(selectedUnit);
-    }, 1200);
+    }
   };
 
   return (
@@ -68,8 +86,8 @@ export default function AlertDispatchModal({ alert, onClose, onDispatch }) {
               <div className="absolute inset-0 pointer-events-none">
                 <div className="absolute left-0 right-0 top-[60%] h-[2px] tripwire-line"></div>
                 <div className="absolute right-[24%] top-[50%] w-[90px] h-[170px] border-2 border-red-500 bbox-person bg-red-500/10">
-                  <div className="absolute -top-6 left-0 bg-red-600 text-white font-mono text-[10px] px-1.5 py-0.5 font-bold">
-                    Target #1 94%
+                  <div className="absolute -top-6 left-0 bg-red-600 text-white font-mono text-[10px] px-1.5 py-0.5 font-bold whitespace-nowrap">
+                    {alert.target || `${(alert.object_class || 'Target').toUpperCase()} ${alert.confidence ? `${Math.round(alert.confidence * 100)}%` : '94%'}`}
                   </div>
                 </div>
               </div>
@@ -220,7 +238,7 @@ export default function AlertDispatchModal({ alert, onClose, onDispatch }) {
                   ) : (
                     <>
                       <Send className="w-4 h-4 text-white" />
-                      CONFIRM DISPATCH QRT TO SECTOR 04
+                      CONFIRM DISPATCH QRT TO {alert.sector || alert.zone || 'SECTOR 04'}
                     </>
                   )}
                 </button>

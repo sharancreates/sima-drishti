@@ -35,3 +35,17 @@ class AlertOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+class DispatchRequest(BaseModel):
+    alert_id: int
+    unit_id: str
+    target_sector: Optional[str] = "Sector 04-North"
+    notes: Optional[str] = ""
+
+class DispatchResponse(BaseModel):
+    status: str
+    dispatch_id: str
+    alert_id: int
+    unit_id: str
+    eta: str
+    timestamp: str

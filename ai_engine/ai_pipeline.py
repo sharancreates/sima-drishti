@@ -18,6 +18,7 @@ VIDEO_SOURCE = os.path.join(BASE_DIR, "media", "WhatsApp Video 2026-09-01 at 8.1
 CONF_THRESHOLD = 0.30
 MODEL_PATH = os.path.join(BASE_DIR, "yolov8n.pt")
 BACKEND_ENDPOINT = "http://127.0.0.1:8000/detection"
+API_KEY = os.getenv("API_KEY", "sima-drishti-secure-key-2026")
 
 TARGET_CLASSES = {0: "person", 2: "car", 7: "truck", 16: "dog"}
 
@@ -36,6 +37,7 @@ payload_queue = queue.Queue()
 def backend_sender_worker():
     """Consumes payloads from queue and dispatches to FastAPI asynchronously."""
     session = requests.Session()
+    session.headers.update({"X-API-Key": API_KEY})
     while True:
         payload = payload_queue.get()
         if payload is None:
