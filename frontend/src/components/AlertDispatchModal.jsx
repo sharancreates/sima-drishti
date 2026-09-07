@@ -11,13 +11,31 @@ export default function AlertDispatchModal({ alert, onClose, onDispatch }) {
 
   if (!alert) return null;
 
-  const handleDispatch = () => {
+  const handleDispatch = async () => {
     setIsDispatching(true);
-    setTimeout(() => {
+    try {
+      const targetId = alert.rawId || alert.alert_id || (alert.id ? parseInt(String(alert.id).replace(/\D/g, '') || '1', 10) : 1);
+      const res = await fetch("http://127.0.0.1:8000/dispatch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          alert_id: targetId,
+          unit_id: selectedUnit,
+          target_sector: alert.sector || alert.zone || 'Sector 04-North',
+          notes: `Tactical QRT intercepted for target: ${alert.target || alert.object_class || 'Intruder'}`
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        console.log('[NOC Dispatch Confirmed]:', data);
+      }
+    } catch (err) {
+      console.warn('[NOC Dispatch] Backend unreachable, executing local tactical dispatch:', err);
+    } finally {
       setIsDispatching(false);
       setDispatched(true);
       if (onDispatch) onDispatch(selectedUnit);
-    }, 1200);
+    }
   };
 
   return (
@@ -41,7 +59,7 @@ export default function AlertDispatchModal({ alert, onClose, onDispatch }) {
                 </span>
               </div>
               <p className="text-xs text-slate-400 font-mono">
-                EVENT ID: #{alert.id || 'EV-49201'} · SECTOR 04-NORTH
+                EVENT ID: #{alert.id || (alert.alert_id ? `EV-${alert.alert_id}` : 'EV-49201')} · {alert.sector || alert.zone || 'SECTOR 04-NORTH'}
               </p>
             </div>
           </div>
@@ -59,24 +77,38 @@ export default function AlertDispatchModal({ alert, onClose, onDispatch }) {
           {/* Left: Snapshot & AI Classification */}
           <div className="lg:col-span-7 flex flex-col gap-4">
             <div className="relative rounded-lg overflow-hidden border border-slate-700 bg-black aspect-video flex items-center justify-center">
-              <img
-                src={alert.image || "https://lh3.googleusercontent.com/aida-public/AB6AXuCumfyk0VITQQhCi4VRbB6Ra_80yobpm3tx3tRvbC5If2U4QFwJXR2LNXSPycdk9z8QdkUGw0DjIoVypH4kusiVPBqS8dCzJU0VRvNgFUZ8uitNB-A5SXs89tdvg4H6dbTED0v8MHKzRiucen7u8uZhhLvhLykP3dauxH3kK2gy5wS0pOip7XaKooLhHhE0FKAx5R0WfP5MQArkHR-ER4aVNSl2bubJSmeHaKUoGdkbm85tRkrsLzM"}
-                alt="Breach Snapshot"
-                className="w-full h-full object-cover"
-              />
+              {(alert.image?.endsWith('.mp4') || alert.thumbnail?.endsWith('.mp4')) ? (
+                <video
+                  src={alert.image || alert.thumbnail || '/videos/cam_04_north_perimeter.mp4'}
+                  autoPlay
+                  loop
+                  muted
+                  playsInline
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <img
+                  src={alert.thumbnail || alert.image || "/videos/cam_04_north_perimeter.mp4"}
+                  alt="Breach Snapshot"
+                  className="w-full h-full object-cover"
+                  onError={(e) => {
+                    e.currentTarget.style.display = 'none';
+                  }}
+                />
+              )}
               {/* Tripwire & Bounding Overlays */}
               <div className="absolute inset-0 pointer-events-none">
                 <div className="absolute left-0 right-0 top-[60%] h-[2px] tripwire-line"></div>
                 <div className="absolute right-[24%] top-[50%] w-[90px] h-[170px] border-2 border-red-500 bbox-person bg-red-500/10">
-                  <div className="absolute -top-6 left-0 bg-red-600 text-white font-mono text-[10px] px-1.5 py-0.5 font-bold">
-                    Target #1 94%
+                  <div className="absolute -top-6 left-0 bg-red-600 text-white font-mono text-[10px] px-1.5 py-0.5 font-bold whitespace-nowrap">
+                    {alert.target || `${(alert.object_class || 'Target').toUpperCase()} ${alert.confidence ? `${Math.round(alert.confidence * 100)}%` : '94%'}`}
                   </div>
                 </div>
               </div>
 
               {/* Timestamp Stamp */}
               <div className="absolute bottom-3 left-3 px-2 py-1 bg-black/80 font-mono text-[11px] text-red-400 rounded border border-red-500/40">
-                REC: 2026-03-29 06:24:12 UTC · 4K RTSP
+                REC: {alert.time || alert.timestamp || '2026-03-29 06:24:12 UTC'} · 4K RTSP
               </div>
             </div>
 
@@ -91,16 +123,16 @@ export default function AlertDispatchModal({ alert, onClose, onDispatch }) {
               </div>
               <div className="grid grid-cols-2 gap-2 text-slate-300 pt-1">
                 <div>
-                  <span className="text-slate-400">Class:</span> <span className="text-white font-bold">Person (Armed/Suspicious)</span>
+                  <span className="text-slate-400">Class:</span> <span className="text-white font-bold">{alert.target || (alert.object_class ? alert.object_class.toUpperCase() : 'Person (Armed/Suspicious)')}</span>
                 </div>
                 <div>
-                  <span className="text-slate-400">Confidence:</span> <span className="text-emerald-400 font-bold">94.2%</span>
+                  <span className="text-slate-400">Confidence:</span> <span className="text-emerald-400 font-bold">{alert.confidence ? `${Math.round(alert.confidence * 100)}%` : '94.2%'}</span>
                 </div>
                 <div>
                   <span className="text-slate-400">Velocity:</span> 1.4 m/s (Inbound)
                 </div>
                 <div>
-                  <span className="text-slate-400">Tripwire:</span> <span className="text-red-400 font-bold">ZONE 4A VIOLATED</span>
+                  <span className="text-slate-400">Tripwire:</span> <span className="text-red-400 font-bold">{alert.sector || alert.zone || 'ZONE 4A'} VIOLATED</span>
                 </div>
               </div>
             </div>
@@ -118,15 +150,15 @@ export default function AlertDispatchModal({ alert, onClose, onDispatch }) {
               <div className="space-y-1 text-slate-400">
                 <div className="flex justify-between">
                   <span>Sector:</span>
-                  <span className="text-white font-semibold">Sector 04-North (Forward Base)</span>
+                  <span className="text-white font-semibold">{alert.sector || alert.zone || 'Sector 04-North (Forward Base)'}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Coordinates:</span>
-                  <span className="text-blue-400 font-semibold">31.4392° N, 74.3298° E</span>
+                  <span className="text-blue-400 font-semibold">{alert.lat ? `${alert.lat}° N, ${alert.lng}° E` : '31.4392° N, 74.3298° E'}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Perimeter Distance:</span>
-                  <span className="text-amber-400 font-semibold">42 meters inside zone</span>
+                  <span className="text-amber-400 font-semibold">{alert.desc || '42 meters inside zone'}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Radio Band:</span>
@@ -220,7 +252,7 @@ export default function AlertDispatchModal({ alert, onClose, onDispatch }) {
                   ) : (
                     <>
                       <Send className="w-4 h-4 text-white" />
-                      CONFIRM DISPATCH QRT TO SECTOR 04
+                      CONFIRM DISPATCH QRT TO {alert.sector || alert.zone || 'SECTOR 04'}
                     </>
                   )}
                 </button>

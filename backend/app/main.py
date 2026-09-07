@@ -15,7 +15,7 @@ from sqlalchemy import func
 
 from app.database import Base, engine, get_db
 from app.models import AlertLog, Zone
-from app.schemas import DetectionPayload, AlertOut, ZoneCreate, ZoneOut
+from app.schemas import DetectionPayload, AlertOut, ZoneCreate, ZoneOut, DispatchRequest, DispatchResponse
 from app.fusion import fusion_engine
 from app.hardware import hardware_bridge
 from app.utils import cleanup_old_thumbnails
@@ -110,6 +110,59 @@ def create_zone(zone_in: ZoneCreate, db: Session = Depends(get_db), api_key: str
 def list_zones(db: Session = Depends(get_db)):
     return db.query(Zone).all()
 
+@app.get("/cameras")
+def list_cameras():
+    return [
+        {
+            "id": "cam-01",
+            "name": "CAM-01 · GATE ALPHA",
+            "status": "ONLINE",
+            "fps": 30,
+            "sector": "SEC-1",
+            "sector_name": "SECTOR 1A · GATEWAY ALPHA",
+            "rtsp_url": "rtsp://192.168.1.101:554/ch01/main",
+            "resolution": "1080P · 30 FPS",
+            "lat": 31.4385,
+            "lng": 74.3210
+        },
+        {
+            "id": "cam-02",
+            "name": "CAM-02 · FENCE BRAVO",
+            "status": "ONLINE",
+            "fps": 30,
+            "sector": "SEC-2",
+            "sector_name": "SECTOR 2B · FENCE PERIMETER BRAVO",
+            "rtsp_url": "rtsp://192.168.2.102:554/ch01/main",
+            "resolution": "2K · 30 FPS",
+            "lat": 31.4398,
+            "lng": 74.3245
+        },
+        {
+            "id": "cam-03",
+            "name": "CAM-03 · RIVERINE WATCH",
+            "status": "ONLINE",
+            "fps": 28,
+            "sector": "SEC-3",
+            "sector_name": "SECTOR 3C · RIVERINE EMBANKMENT",
+            "rtsp_url": "rtsp://192.168.3.103:554/ch01/main",
+            "resolution": "1080P · 28 FPS",
+            "lat": 31.4421,
+            "lng": 74.3270
+        },
+        {
+            "id": "cam-04",
+            "name": "CAM-04 · NORTH PERIMETER",
+            "status": "ALERT",
+            "fps": 30,
+            "sector": "SEC-4A",
+            "sector_name": "SECTOR 4A · NORTH PERIMETER",
+            "rtsp_url": "rtsp://192.168.4.108:554/live",
+            "resolution": "4K · 30 FPS",
+            "lat": 31.4392,
+            "lng": 74.3298
+        }
+    ]
+
 @app.websocket("/ws/alerts")
 async def websocket_endpoint(websocket: WebSocket):
     await manager.connect(websocket)
@@ -184,6 +237,37 @@ def get_alerts(skip: int = 0, limit: int = 50, db: Session = Depends(get_db)):
             timestamp=a.timestamp.isoformat()
         ) for a in alerts
     ]
+
+@app.post("/dispatch", response_model=DispatchResponse)
+async def dispatch_unit(req: DispatchRequest, db: Session = Depends(get_db)):
+    eta_map = {
+        "alpha": "2m (QRT Alpha)",
+        "bravo": "5m (QRT Bravo)",
+        "drone": "45s (UAV Drone Interceptor)"
+    }
+    eta = eta_map.get(req.unit_id.lower(), "3m (Tactical Unit)")
+    dispatch_id = f"DSP-{int(datetime.utcnow().timestamp())}"
+    now_iso = datetime.utcnow().isoformat()
+
+    dispatch_event = {
+        "event_type": "QRT_DISPATCHED",
+        "dispatch_id": dispatch_id,
+        "alert_id": req.alert_id,
+        "unit_id": req.unit_id,
+        "target_sector": req.target_sector,
+        "eta": eta,
+        "timestamp": now_iso
+    }
+    await manager.broadcast(dispatch_event)
+
+    return DispatchResponse(
+        status="DISPATCH_CONFIRMED",
+        dispatch_id=dispatch_id,
+        alert_id=req.alert_id,
+        unit_id=req.unit_id,
+        eta=eta,
+        timestamp=now_iso
+    )
 
 if __name__ == "__main__":
     uvicorn.run(app, host="127.0.0.1", port=8000)
