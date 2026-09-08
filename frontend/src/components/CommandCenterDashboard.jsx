@@ -220,6 +220,35 @@ export default function CommandCenterDashboard({ onSelectAlert }) {
     hardware_status: 'standby'
   });
   const [alarmActive, setAlarmActive] = useState(false);
+  const [streamInfo, setStreamInfo] = useState({ is_streaming: false, active_cam: 'cam-04', active_cams: [] });
+
+  // Poll backend for live AI stream availability and active cameras
+  useEffect(() => {
+    let isMounted = true;
+    const checkStreamStatus = async () => {
+      try {
+        const res = await fetch(`${BACKEND_URL}/stream/status`);
+        if (res.ok) {
+          const data = await res.json();
+          if (isMounted) setStreamInfo(data);
+        } else if (isMounted) {
+          setStreamInfo(prev => ({ ...prev, is_streaming: false, active_cams: [] }));
+        }
+      } catch {
+        if (isMounted) setStreamInfo(prev => ({ ...prev, is_streaming: false, active_cams: [] }));
+      }
+    };
+
+    checkStreamStatus();
+    const interval = setInterval(checkStreamStatus, 2000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, []);
+
+  const isCurrentCamStreaming = streamInfo.is_streaming && 
+    (streamInfo.active_cams?.includes(activeCam) || streamInfo.active_cam?.toLowerCase() === activeCam.toLowerCase());
 
   // Tactical sound synthesizer
   const playTacticalBeep = (freq = 880, duration = 0.25) => {
@@ -510,6 +539,12 @@ export default function CommandCenterDashboard({ onSelectAlert }) {
               </span>
             </div>
             <div className="flex items-center gap-3 text-xs font-mono">
+              {isCurrentCamStreaming && (
+                <div className="flex items-center gap-1.5 text-cyan-300 bg-cyan-500/20 px-2.5 py-0.5 rounded border border-cyan-400/60 shadow-[0_0_10px_rgba(6,182,212,0.3)] animate-pulse">
+                  <span className="w-1.5 h-1.5 rounded-full bg-cyan-400"></span>
+                  <span className="font-bold tracking-wider text-[11px]">LIVE AI STREAM ({currentCam.name})</span>
+                </div>
+              )}
               <span className="text-slate-400 hidden sm:inline">{currentCam.rtspUrl}</span>
               <div className="flex items-center gap-1 text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/30">
                 <Wifi className="w-3 h-3" />
@@ -521,27 +556,46 @@ export default function CommandCenterDashboard({ onSelectAlert }) {
           {/* Live Video Viewport */}
           <div className="relative flex-1 bg-black overflow-hidden flex items-center justify-center group">
             
-            {/* Real HTML5 Surveillance Video Element */}
-            <video 
-              ref={videoRef}
-              key={currentCam.id}
-              src={currentCam.videoSrc}
-              autoPlay
-              loop
-              muted
-              playsInline
-              className={`w-full h-full object-cover transition-all duration-300 ${
-                viewMode === 'thermal'
-                  ? 'filter invert contrast-[180%] brightness-110 hue-rotate-180 saturate-[220%]'
-                  : viewMode === 'night'
-                  ? 'filter sepia-[100%] hue-rotate-[85deg] brightness-125 contrast-[150%] saturate-[200%]'
-                  : 'opacity-95 filter contrast-125 brightness-95'
-              }`}
-              style={{ 
-                transform: `scale(${zoomLevel})`,
-                transformOrigin: 'center center'
-              }}
-            />
+            {/* Live AI Stream or HTML5 Surveillance Video Fallback */}
+            {isCurrentCamStreaming ? (
+              <img 
+                src={`${BACKEND_URL}/stream/video_feed?cam_id=${activeCam}`}
+                alt="Live Tactical AI Surveillance Stream"
+                className={`w-full h-full object-cover transition-all duration-300 ${
+                  viewMode === 'thermal'
+                    ? 'filter invert contrast-[180%] brightness-110 hue-rotate-180 saturate-[220%]'
+                    : viewMode === 'night'
+                    ? 'filter sepia-[100%] hue-rotate-[85deg] brightness-125 contrast-[150%] saturate-[200%]'
+                    : 'opacity-95 filter contrast-125 brightness-95'
+                }`}
+                style={{ 
+                  transform: `scale(${zoomLevel})`,
+                  transformOrigin: 'center center'
+                }}
+                onError={() => setStreamInfo(prev => ({ ...prev, is_streaming: false }))}
+              />
+            ) : (
+              <video 
+                ref={videoRef}
+                key={currentCam.id}
+                src={currentCam.videoSrc}
+                autoPlay
+                loop
+                muted
+                playsInline
+                className={`w-full h-full object-cover transition-all duration-300 ${
+                  viewMode === 'thermal'
+                    ? 'filter invert contrast-[180%] brightness-110 hue-rotate-180 saturate-[220%]'
+                    : viewMode === 'night'
+                    ? 'filter sepia-[100%] hue-rotate-[85deg] brightness-125 contrast-[150%] saturate-[200%]'
+                    : 'opacity-95 filter contrast-125 brightness-95'
+                }`}
+                style={{ 
+                  transform: `scale(${zoomLevel})`,
+                  transformOrigin: 'center center'
+                }}
+              />
+            )}
 
             {/* Overlays: Tactical Scanlines & Vignette */}
             <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(circle_at_center,transparent_50%,rgba(0,0,0,0.85)_100%)]"></div>
@@ -655,8 +709,8 @@ export default function CommandCenterDashboard({ onSelectAlert }) {
               <span>GEOFENCE [{currentCam.sector}] // {currentCam.isAlert ? 'TRIPWIRE BREACH DETECTED' : 'ARMED & MONITORED'}</span>
             </div>
 
-            {/* DYNAMIC AI DETECTION BOUNDING BOXES */}
-            {currentCam.detections.map((d) => (
+            {/* DYNAMIC AI DETECTION BOUNDING BOXES (Hidden when live AI stream is broadcasting) */}
+            {!isCurrentCamStreaming && currentCam.detections.map((d) => (
               <div
                 key={d.id}
                 onClick={() => handleDetectionClick(d)}
@@ -794,13 +848,21 @@ export default function CommandCenterDashboard({ onSelectAlert }) {
                   <div className="text-[11px] font-bold text-white truncate">{cam.name}</div>
                   <div className="text-[9px] text-slate-500">{cam.sector}</div>
                 </div>
-                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
-                  cam.status === 'ALERT' 
-                    ? 'bg-red-950 text-red-400 border border-red-700 animate-pulse' 
-                    : 'bg-emerald-950 text-emerald-400 border border-emerald-800'
-                }`}>
-                  {cam.status}
-                </span>
+                <div className="flex items-center gap-1 shrink-0">
+                  {streamInfo.is_streaming && 
+                    (streamInfo.active_cams?.includes(cam.id) || streamInfo.active_cam?.toLowerCase() === cam.id.toLowerCase()) && (
+                    <span className="text-[8px] font-bold px-1 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-500/80 animate-pulse">
+                      AI LIVE
+                    </span>
+                  )}
+                  <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
+                    cam.status === 'ALERT' 
+                      ? 'bg-red-950 text-red-400 border border-red-700 animate-pulse' 
+                      : 'bg-emerald-950 text-emerald-400 border border-emerald-800'
+                  }`}>
+                    {cam.status}
+                  </span>
+                </div>
               </button>
             ))}
           </div>
