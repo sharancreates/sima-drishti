@@ -22,6 +22,8 @@ Traditional border surveillance faces acute operational friction: human operator
 ## Key Capabilities
 
 - **Autonomous Edge AI & Tracking**: Powered by YOLOv8 and ByteTrack multi-object tracking (MOT) for persistent target association across video frames.
+- **In-App Live Video Streaming**: Zero-desktop-window architecture. Annotated surveillance frames (bounding boxes, track IDs, tripwire polygons) stream directly into the browser dashboard via an optimized, low-latency MJPEG streaming bridge (`/stream/video_feed`).
+- **All-in-One Multi-Camera Grid (`--all`)**: Simultaneously executes AI edge pipelines across all 4 sector cameras (`cam-01`, `cam-02`, `cam-03`, `cam-04`) with multi-threaded inference and dynamic dashboard channel routing.
 - **Adaptive Low-Light / Night Enhancement**: Automatic luminance detection with dynamic CLAHE (Contrast Limited Adaptive Histogram Equalization), bilateral filtering, and inverse gamma correction in LAB color space for adverse visual conditions.
 - **Geofenced Virtual Tripwires**: Polygon-based perimeter vector zones powered by Shapely geometry, tracking the precise foot-contact/anchor point of targets to eliminate perspective distortion.
 - **Multi-Stage Sensor Fusion Engine**:
@@ -32,7 +34,7 @@ Traditional border surveillance faces acute operational friction: human operator
 - **Real-Time Telemetry & WebSockets**: Low-latency event broadcast via WebSocket (`/ws/alerts`) pushing incident alerts, bounding telemetry, GPS coordinates, and snapshot previews to connected control rooms.
 - **Defense-Grade Command Dashboard**:
   - **Tactical HUD**: Switchable Optical, FLIR Thermal, and Night IR filters with digital PTZ zoom.
-  - **Multi-Camera Matrix**: Real-time status monitoring across multiple sectors.
+  - **Multi-Camera Matrix**: Real-time status monitoring with `AI LIVE` indicators across multiple sectors.
   - **Integrated QRT Dispatch Manager**: One-click operational dispatch for Ground Patrol Units, Heavy Armored QRTs, and UAV Interceptor Drones.
 
 ---
@@ -42,17 +44,19 @@ Traditional border surveillance faces acute operational friction: human operator
 ```mermaid
 flowchart TD
     subgraph Edge["Edge Surveillance & Vision Pipeline (ai_engine)"]
-        Cam["RTSP / Video Stream / Night Optics"] --> LowLight{"Luminance < Threshold?"}
+        Cam["Multi-Cam RTSP / Video / Webcam"] --> LowLight{"Luminance < Threshold?"}
         LowLight -- Yes --> CLAHE["CLAHE + Bilateral + Gamma (LAB)"]
         LowLight -- No --> YOLO["YOLOv8 Object Detection"]
         CLAHE --> YOLO
         YOLO --> ByteTrack["ByteTrack Multi-Object Tracking"]
         ByteTrack --> GeoFence["Shapely Polygon Tripwire Engine"]
-        GeoFence --> AsyncQueue["Non-Blocking Threaded Queue"]
+        GeoFence --> FrameStream["Asynchronous Frame Streamer"]
+        GeoFence --> AlertQueue["Non-Blocking Alert Queue"]
     end
 
     subgraph Backend["Core Backend & Fusion Engine (backend)"]
-        AsyncQueue -- "HTTP POST /detection (X-API-Key)" --> API["FastAPI Gateway"]
+        FrameStream -- "HTTP POST /stream/frame (X-Camera-ID)" --> StreamMgr["VideoStreamManager (MJPEG)"]
+        AlertQueue -- "HTTP POST /detection (X-API-Key)" --> API["FastAPI Ingest Gateway"]
         API --> FusionEngine["Fusion Engine"]
         
         subgraph Filters["Multi-Stage Threat Verification"]
@@ -74,11 +78,14 @@ flowchart TD
     end
 
     subgraph Frontend["Tactical Command & Control NOC (frontend)"]
+        StreamMgr -- "GET /stream/video_feed?cam_id=X" --> LiveViewport["In-App Live Video Viewport"]
         WSMgr -- "ws://host/ws/alerts" --> Dashboard["React 19 Tactical NOC Dashboard"]
-        Dashboard --> CameraGrid["Multi-Camera Switcher"]
+        Dashboard --> LiveViewport
+        Dashboard --> CameraGrid["Multi-Camera Switcher (AI LIVE Badges)"]
         Dashboard --> OpticalFilters["Optical / FLIR Thermal / Night IR"]
         Dashboard --> ThreatFeed["Live Incident & Threat Feed"]
         Dashboard --> DispatchModal["QRT Rapid Dispatch Console"]
+        DispatchModal -- "POST /dispatch" --> API
         DispatchModal --> QRT["Quick Reaction Teams / UAV Interceptor"]
     end
 ```
@@ -201,10 +208,41 @@ sima-drishti/
    pip install -r requirements.txt
    ```
 3. Run the AI pipeline:
+
+   **Mode A: Full Multi-Camera Surveillance Grid (Recommended for Demos)**
+   Spins up simultaneous multi-threaded AI pipelines across all 4 cameras (`cam-01`, `cam-02`, `cam-03`, `cam-04`):
    ```bash
-   python ai_pipeline.py
+   python ai_pipeline.py --all
    ```
-   > **Note:** By default, `ai_pipeline.py` plays the bundled sample video from `media/`. To connect a live webcam or IP camera, set `VIDEO_SOURCE = 0` or an RTSP URL in `ai_pipeline.py`.
+
+   **Mode B: Targeted Single Camera & Video Presets**
+   ```bash
+   # 1. Person Breach Video -> Streams to CAM-04 (North Perimeter)
+   python ai_pipeline.py --video 1 --cam cam-04
+   # OR: python ai_pipeline.py --video person
+
+   # 2. Stray Dog / Animal Non-Threat Test -> Streams to CAM-02 (Fence Bravo)
+   python ai_pipeline.py --video 2 --cam cam-02
+   # OR: python ai_pipeline.py --video dog
+
+   # 3. Riverine Perimeter Video -> Streams to CAM-03 (Riverine Watch)
+   python ai_pipeline.py --video 3 --cam cam-03
+   # OR: python ai_pipeline.py --video fence
+
+   # 4. Live USB Webcam -> Streams to CAM-01 (Gate Alpha)
+   python ai_pipeline.py --video 0 --cam cam-01
+   # OR: python ai_pipeline.py --video webcam
+
+   # 5. Any Custom Video File or RTSP URL
+   python ai_pipeline.py --video "C:\path\to\custom_feed.mp4" --cam cam-04
+   ```
+
+   | Preset Key | Video File / Source | Default Target Camera |
+   | :--- | :--- | :--- |
+   | `1`, `person`, `breach` | `WhatsApp Video 2026-08-29 at 11.14.59 PM.mp4` | `cam-04` (North Perimeter) |
+   | `2`, `dog`, `animal` | `Stray_dog_crosses_border_fence_202608292240.mp4` | `cam-02` (Fence Bravo) |
+   | `3`, `fence`, `river` | `WhatsApp Video 2026-09-01 at 8.10.04 PM.mp4` | `cam-03` (Riverine Watch) |
+   | `0`, `webcam` | Device Index 0 (Live USB Webcam) | `cam-01` (Gate Alpha) |
 
 ---
 
@@ -226,6 +264,7 @@ sima-drishti/
    ```
    http://localhost:5173
    ```
+   *Note: In the bottom camera grid, cameras currently receiving a live AI feed display an animated **`AI LIVE`** indicator. Clicking any camera channel immediately renders its real-time AI detection feed in the main tactical HUD.*
 
 ---
 
@@ -238,7 +277,12 @@ sima-drishti/
 | `GET` | `/health` | System health check, active WebSocket client count | No |
 | `GET` | `/analytics` | Total alerts, 24h breach counts, active sectors, hardware status | No |
 | `POST` | `/detection` | Ingests edge detection payloads for sensor fusion evaluation | `X-API-Key` |
+| `POST` | `/stream/frame` | Ingests real-time annotated JPEG frames from `ai_pipeline.py` | No (`X-Camera-ID`) |
+| `GET` | `/stream/video_feed` | Low-latency MJPEG stream rendered inside tactical browser HUD (`?cam_id=X`) | No |
+| `GET` | `/stream/status` | Reports active stream state, broadcasting camera IDs, and latency | No |
 | `GET` | `/alerts` | Retrieves paginated historical alert logs with thumbnails and coordinates | No |
+| `POST` | `/dispatch` | Dispatches Quick Reaction Team (QRT Alpha/Bravo/Drone) to sector | `X-API-Key` |
+| `GET` | `/cameras` | Lists all registered optical & thermal camera stations | No |
 | `GET` | `/zones` | Lists registered surveillance zones and GPS coordinates | No |
 | `POST` | `/zones` | Registers a new zone and coordinates | `X-API-Key` |
 
