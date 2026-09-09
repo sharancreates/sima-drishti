@@ -13,7 +13,7 @@ class HardwareBridge:
         self.serial_conn = None
         if not FALLBACK_MODE:
             try:
-                self.serial_conn = serial.Serial(SERIAL_PORT, SERIAL_BAUD, timeout=1)
+                self.serial_conn = serial.Serial(SERIAL_PORT, SERIAL_BAUD, timeout=1, write_timeout=1)
                 print(f"[Hardware] Connected to serial port {SERIAL_PORT} at {SERIAL_BAUD} baud.")
             except Exception as e:
                 print(f"[Hardware Warning] Could not connect to {SERIAL_PORT}: {e}. Running in simulation/fallback mode.")
