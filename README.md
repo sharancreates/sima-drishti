@@ -356,6 +356,45 @@ To prevent siren spam and costly false alarms, the `FusionEngine` implements a 4
 
 ---
 
+## Arduino Uno Hardware Bridge (Buzzer & LED)
+
+SIMA-DRISHTI integrates directly with an **Arduino Uno** over USB Serial to trigger physical hardware alarms (strobe LED and tactical siren buzzer) on confirmed intrusions.
+
+### 1. Wiring Diagram
+
+| Component | Pin on Arduino Uno | Notes |
+| :--- | :--- | :--- |
+| **Active Buzzer (+)** | **Pin 8** | Digital output trigger |
+| **Active Buzzer (-)** | **GND** | Ground |
+| **Alarm LED (Anode, +)** | **Pin 13** (or Pin 7 via 220Ω resistor) | Also pulses onboard Uno LED |
+| **Alarm LED (Cathode, -)** | **GND** | Ground |
+
+### 2. Upload Firmware to Arduino
+
+1. Open `arduino/sima_drishti_alarm.ino` in the **Arduino IDE**.
+2. Connect your Arduino Uno to your PC via USB.
+3. Select your Board (**Arduino Uno**) and Port (**COMx**).
+4. Click **Upload** (`Ctrl+U`).
+
+### 3. Configure Backend & Test
+
+1. In `backend/.env`, set your COM port and disable fallback mode:
+   ```env
+   SERIAL_PORT=COM3    # Change to match your Arduino's COM port
+   SERIAL_BAUD=9600
+   FALLBACK_MODE=False
+   ```
+2. Test the connection without starting the entire pipeline:
+   ```powershell
+   cd backend
+   python test_hardware.py
+   ```
+   The buzzer will sound and the LED will strobe for 3 seconds, confirming physical communication!
+3. When running `uvicorn app.main:app` and `python ai_pipeline.py`, any confirmed threat crossing the tactical geofence automatically sounds the physical siren!
+
+
+---
+
 ## Roadmap
 
 - [ ] **Multi-Camera Handover**: Re-ID (Re-Identification) module to track intruders across multiple non-overlapping camera sectors.

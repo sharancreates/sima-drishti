@@ -22,11 +22,23 @@ class HardwareBridge:
     def trigger_alert(self):
         if self.serial_conn and self.serial_conn.is_open:
             try:
-                self.serial_conn.write(b'1\n')
-                print("[Hardware] Serial signal sent: b'1\n'")
+                self.serial_conn.write(b"ALERT_ON\n")
+                self.serial_conn.flush()
+                print("[Hardware] Serial signal sent: 'ALERT_ON\\n'")
             except Exception as e:
                 print(f"[Hardware Error] Failed to write to serial: {e}")
         else:
-            print("[Hardware Simulation] Alert triggered (Fallback Mode: No physical device attached).")
+            print("[Hardware Simulation] Alert triggered: 'ALERT_ON' (Fallback Mode).")
+
+    def silence_alert(self):
+        if self.serial_conn and self.serial_conn.is_open:
+            try:
+                self.serial_conn.write(b"ALERT_OFF\n")
+                self.serial_conn.flush()
+                print("[Hardware] Serial signal sent: 'ALERT_OFF\\n'")
+            except Exception as e:
+                print(f"[Hardware Error] Failed to write to serial: {e}")
+        else:
+            print("[Hardware Simulation] Alert silenced: 'ALERT_OFF' (Fallback Mode).")
 
 hardware_bridge = HardwareBridge()
