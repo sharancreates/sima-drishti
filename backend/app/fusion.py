@@ -15,12 +15,12 @@ class FusionEngine:
         self.track_ttl_seconds = track_ttl_seconds
         self.allowed_classes = {"person", "car", "truck", "bus"}
         
-        # track_id -> consecutive valid frame count
-        self.track_history: Dict[int, int] = defaultdict(int)
-        # track_id -> last alert timestamp (cooldown)
-        self.last_alert_time: Dict[int, float] = {}
-        # track_id -> last seen timestamp for expiration cleanup
-        self.track_last_seen: Dict[int, float] = {}
+        # composite_track_key (zone_id:track_id) -> consecutive valid frame count
+        self.track_history: Dict[str, int] = defaultdict(int)
+        # composite_track_key -> last alert timestamp (cooldown)
+        self.last_alert_time: Dict[str, float] = {}
+        # composite_track_key -> last seen timestamp for expiration cleanup
+        self.track_last_seen: Dict[str, float] = {}
 
     def cleanup_expired_tracks(self, current_time: float) -> int:
         """Prunes stale tracking data older than track_ttl_seconds to prevent memory leaks."""
@@ -36,34 +36,35 @@ class FusionEngine:
 
     def process(self, detection: DetectionPayload) -> Tuple[bool, str]:
         current_time = time.time()
-        self.track_last_seen[detection.track_id] = current_time
+        track_key = f"{detection.zone_id or 'default'}:{detection.track_id}"
+        self.track_last_seen[track_key] = current_time
         self.cleanup_expired_tracks(current_time)
 
         # Filter 1: Check Target Class
         if detection.object_class.lower() not in self.allowed_classes:
-            self.track_history.pop(detection.track_id, None)
+            self.track_history.pop(track_key, None)
             return False, f"Ignored non-target class: {detection.object_class}"
 
         # Filter 2: Check Tripwire / Zone Presence
         if not detection.in_zone:
-            self.track_history[detection.track_id] = 0
+            self.track_history[track_key] = 0
             return False, "Object detected outside zone"
 
         # Filter 3: Temporal Persistence Check
-        self.track_history[detection.track_id] += 1
-        current_count = self.track_history[detection.track_id]
+        self.track_history[track_key] += 1
+        current_count = self.track_history[track_key]
 
         if current_count < self.persistence_threshold:
             return False, f"Tracking persistence: {current_count}/{self.persistence_threshold}"
 
         # Filter 4: Alert Cooldown Check (Avoid Spamming DB & Siren)
-        last_time = self.last_alert_time.get(detection.track_id, 0.0)
+        last_time = self.last_alert_time.get(track_key, 0.0)
         
         if (current_time - last_time) < self.cooldown_seconds:
-            return False, f"Alert active for track {detection.track_id} (in cooldown for {int(self.cooldown_seconds - (current_time - last_time))}s)"
+            return False, f"Alert active for track {track_key} (in cooldown for {int(self.cooldown_seconds - (current_time - last_time))}s)"
 
         # Mark confirmed and record cooldown timestamp
-        self.last_alert_time[detection.track_id] = current_time
+        self.last_alert_time[track_key] = current_time
         return True, f"Confirmed alert for {detection.object_class} (persisted {current_count} frames)"
 
 fusion_engine = FusionEngine(persistence_threshold=5, cooldown_seconds=8.0, track_ttl_seconds=60.0)

@@ -49,7 +49,7 @@ def resolve_video_source(source_arg):
     return VIDEO_PRESETS["1"]
 
 MODEL_PATH = os.path.join(BASE_DIR, "yolov8n.pt")
-BACKEND_ENDPOINT = "http://127.0.0.1:8000/detection"
+BACKEND_ENDPOINT = os.getenv("BACKEND_ENDPOINT", "http://127.0.0.1:8000/detection")
 API_KEY = os.getenv("API_KEY", "sima-drishti-secure-key-2026")
 STREAM_ENDPOINT = os.getenv("STREAM_ENDPOINT", "http://127.0.0.1:8000/stream/frame")
 
@@ -63,87 +63,92 @@ ZONE_COORDINATE_RATIOS = [
 ]
 
 # ----------------------------------------------------
-# 2. ASYNC BACKGROUND HTTP DISPATCHER & STREAMER
+# 2. ASYNC BACKGROUND HTTP DISPATCHER & HIGH-THROUGHPUT STREAMER
 # ----------------------------------------------------
-payload_queue = queue.Queue()
-frame_stream_queue = queue.Queue(maxsize=8)
-CURRENT_CAMERA_ID = "cam-04"
+payload_queue = queue.Queue(maxsize=128)
+
+# Latest frame store per camera channel (non-blocking, zero queue lockups)
+latest_camera_frames = {}
+latest_camera_frames_lock = threading.Lock()
+
+def update_stream_frame(cam_id: str, frame_bytes: bytes):
+    """Safely updates latest encoded frame for a given camera channel."""
+    with latest_camera_frames_lock:
+        latest_camera_frames[cam_id.lower()] = (frame_bytes, time.time())
 
 def backend_sender_worker():
-    """Consumes payloads from queue and dispatches to FastAPI with authentication."""
+    """Consumes detection payloads from queue and dispatches to FastAPI fusion engine."""
     session = requests.Session()
-    api_key_header = {"X-API-Key": "sima-drishti-secure-key-2026"}
+    api_key_header = {"X-API-Key": API_KEY}
     session.headers.update(api_key_header)
     while True:
-        payload = payload_queue.get()
+        try:
+            payload = payload_queue.get(timeout=0.5)
+        except queue.Empty:
+            continue
         if payload is None:
             break
         try:
-            response = session.post(BACKEND_ENDPOINT, json=payload, headers=api_key_header, timeout=1.0)
+            response = session.post(BACKEND_ENDPOINT, json=payload, headers=api_key_header, timeout=0.8)
             if response.status_code == 200:
                 data = response.json()
                 if data.get("status") == "ALERT_CONFIRMED":
-                    print(f"🚨 [ALERT CONFIRMED BY FUSION ENGINE] Alert ID: {data.get('alert_id')}")
-            else:
-                print(f"⚠️ [Backend Error {response.status_code}]: {response.text}")
+                    print(f"🚨 [ALERT CONFIRMED BY FUSION ENGINE] Alert ID: {data.get('alert_id')} | Zone: {payload.get('zone_id')}")
         except requests.exceptions.RequestException:
             pass
         finally:
             payload_queue.task_done()
 
-def frame_stream_worker():
-    """Streams compressed JPEG frames to FastAPI MJPEG endpoint for web app rendering."""
+def camera_stream_sender(cam_id: str, stop_event: threading.Event):
+    """Dedicated lightweight streaming worker per active camera (runs at ~22 FPS)."""
     session = requests.Session()
-    while True:
-        item = frame_stream_queue.get()
-        if item is None:
-            break
-        if isinstance(item, tuple):
-            cam_id, frame_bytes = item
-        else:
-            cam_id, frame_bytes = CURRENT_CAMERA_ID, item
-        try:
-            headers = {
-                "Content-Type": "image/jpeg",
-                "X-Camera-ID": cam_id
-            }
-            session.post(f"{STREAM_ENDPOINT}?cam_id={cam_id}", data=frame_bytes, headers=headers, timeout=0.5)
-        except Exception:
-            pass
-        finally:
-            frame_stream_queue.task_done()
+    target_cam = cam_id.lower()
+    headers = {
+        "Content-Type": "image/jpeg",
+        "X-Camera-ID": target_cam
+    }
+    url = f"{STREAM_ENDPOINT}?cam_id={target_cam}"
+    last_sent_timestamp = 0.0
+
+    while not stop_event.is_set():
+        frame_bytes = None
+        ts = 0.0
+        with latest_camera_frames_lock:
+            if target_cam in latest_camera_frames:
+                frame_bytes, ts = latest_camera_frames[target_cam]
+
+        if frame_bytes and ts > last_sent_timestamp:
+            last_sent_timestamp = ts
+            try:
+                session.post(url, data=frame_bytes, headers=headers, timeout=0.3)
+            except Exception:
+                pass
+        time.sleep(0.045)  # ~22 FPS pacing to backend
 
 network_thread = threading.Thread(target=backend_sender_worker, daemon=True)
 network_thread.start()
 
-stream_thread = threading.Thread(target=frame_stream_worker, daemon=True)
-stream_thread.start()
-
 # ----------------------------------------------------
-# 3. LOW-LIGHT MODULE
+# 3. HIGH-SPEED LOW-LIGHT MODULE (< 1ms execution)
 # ----------------------------------------------------
-def apply_clahe_enhancement(frame, brightness_threshold=90):
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+def apply_clahe_enhancement(frame, brightness_threshold=85):
+    """Ultra-fast L-channel CLAHE enhancement without slow CPU bilateral filtering."""
+    small = cv2.resize(frame, (64, 36), interpolation=cv2.INTER_NEAREST)
+    gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
     if np.mean(gray) < brightness_threshold:
-        smooth = cv2.bilateralFilter(frame, d=5, sigmaColor=35, sigmaSpace=35)
-        lab = cv2.cvtColor(smooth, cv2.COLOR_BGR2LAB)
+        lab = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB)
         l, a, b = cv2.split(lab)
-        clahe = cv2.createCLAHE(clipLimit=1.8, tileGridSize=(8, 8))
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
         l_enhanced = clahe.apply(l)
-        inv_gamma = 1.0 / 1.25
-        lut = np.array([((i / 255.0) ** inv_gamma) * 255 for i in np.arange(256)]).astype("uint8")
-        l_enhanced = cv2.LUT(l_enhanced, lut)
         merged = cv2.merge((l_enhanced, a, b))
         return cv2.cvtColor(merged, cv2.COLOR_LAB2BGR), True
     return frame, False
 
 # ----------------------------------------------------
-# 4. MAIN PIPELINE
+# 4. SINGLE-CAMERA PIPELINE
 # ----------------------------------------------------
 def run_pipeline(source="1", camera_id="cam-04", conf_threshold=0.35, imgsz=640):
-    global CURRENT_CAMERA_ID
-    CURRENT_CAMERA_ID = camera_id
-
+    camera_id = camera_id.lower()
     resolved_source = resolve_video_source(source)
     source_name = resolved_source if isinstance(resolved_source, str) else "Webcam (Device 0)"
 
@@ -180,96 +185,109 @@ def run_pipeline(source="1", camera_id="cam-04", conf_threshold=0.35, imgsz=640)
         "cam-03": "ZONE_RIVERINE",
         "cam-04": "ZONE_A"
     }
-    assigned_zone = zone_map.get(camera_id.lower(), "ZONE_A")
+    assigned_zone = zone_map.get(camera_id, "ZONE_A")
+
+    stop_event = threading.Event()
+    sender_thread = threading.Thread(target=camera_stream_sender, args=(camera_id, stop_event), daemon=True)
+    sender_thread.start()
+
+    frame_idx = 0
+    active_detections = []
+    INFERENCE_INTERVAL = 2
 
     try:
         while cap.isOpened():
             ret, frame = cap.read()
             if not ret:
-                # Continuous loop for demo if reading from video file
                 if isinstance(resolved_source, str) and os.path.exists(resolved_source):
                     cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
                     ret, frame = cap.read()
                 if not ret:
                     break
 
+            frame_idx += 1
+            run_yolo = (frame_idx % INFERENCE_INTERVAL == 0)
+
             enhanced_frame, was_enhanced = apply_clahe_enhancement(frame)
 
-            results = model.track(
-                source=enhanced_frame,
-                classes=list(TARGET_CLASSES.keys()),
-                conf=conf_threshold,
-                imgsz=imgsz,
-                persist=True,
-                tracker="bytetrack.yaml",
-                verbose=False
-            )
+            if run_yolo:
+                results = model.track(
+                    source=enhanced_frame,
+                    classes=list(TARGET_CLASSES.keys()),
+                    conf=conf_threshold,
+                    imgsz=imgsz,
+                    persist=True,
+                    tracker="bytetrack.yaml",
+                    verbose=False
+                )
 
+                active_detections = []
+                if results[0].boxes and results[0].boxes.id is not None:
+                    boxes = results[0].boxes.xyxy.cpu().numpy()
+                    confidences = results[0].boxes.conf.cpu().numpy()
+                    class_ids = results[0].boxes.cls.cpu().numpy().astype(int)
+                    track_ids = results[0].boxes.id.cpu().numpy().astype(int)
+
+                    for bbox, conf, cls_id, track_id in zip(boxes, confidences, class_ids, track_ids):
+                        x1, y1, x2, y2 = map(int, bbox)
+                        bottom_center = Point(int((x1 + x2) / 2), y2)
+                        in_zone = tripwire_polygon.contains(bottom_center)
+
+                        frame_b64 = None
+                        if in_zone:
+                            crop = frame[max(0, y1):min(frame_height, y2), max(0, x1):min(frame_width, x2)]
+                            if crop.size > 0:
+                                _, buffer = cv2.imencode('.jpg', crop)
+                                frame_b64 = base64.b64encode(buffer).decode('utf-8')
+
+                        payload = {
+                            "object_class": str(TARGET_CLASSES.get(cls_id, "unknown")),
+                            "confidence": float(round(float(conf), 2)),
+                            "bbox": [int(x1), int(y1), int(x2), int(y2)],
+                            "track_id": int(track_id),
+                            "in_zone": bool(in_zone),
+                            "zone_id": assigned_zone,
+                            "frame_image": frame_b64,
+                            "timestamp": int(time.time())
+                        }
+                        try:
+                            payload_queue.put_nowait(payload)
+                        except queue.Full:
+                            pass
+
+                        active_detections.append((bbox, conf, cls_id, track_id, in_zone, payload["object_class"]))
+
+            # Render zone polygon and active bounding boxes
             cv2.polylines(frame, [poly_np], isClosed=True, color=(0, 0, 255), thickness=2)
-
-            if results[0].boxes and results[0].boxes.id is not None:
-                boxes = results[0].boxes.xyxy.cpu().numpy()
-                confidences = results[0].boxes.conf.cpu().numpy()
-                class_ids = results[0].boxes.cls.cpu().numpy().astype(int)
-                track_ids = results[0].boxes.id.cpu().numpy().astype(int)
-
-                for bbox, conf, cls_id, track_id in zip(boxes, confidences, class_ids, track_ids):
-                    x1, y1, x2, y2 = map(int, bbox)
-                    bottom_center = Point(int((x1 + x2) / 2), y2)
-                    in_zone = tripwire_polygon.contains(bottom_center)
-
-                    # Generate base64 thumbnail crop for breach event
-                    frame_b64 = None
-                    if in_zone:
-                        crop = frame[max(0, y1):min(frame_height, y2), max(0, x1):min(frame_width, x2)]
-                        if crop.size > 0:
-                            _, buffer = cv2.imencode('.jpg', crop)
-                            frame_b64 = base64.b64encode(buffer).decode('utf-8')
-
-                    # Schema formatted to match Backend's DetectionPayload
-                    payload = {
-                        "object_class": str(TARGET_CLASSES.get(cls_id, "unknown")),
-                        "confidence": float(round(float(conf), 2)),
-                        "bbox": [int(x1), int(y1), int(x2), int(y2)],
-                        "track_id": int(track_id),
-                        "in_zone": bool(in_zone),
-                        "zone_id": assigned_zone,
-                        "frame_image": frame_b64,
-                        "timestamp": int(time.time())
-                    }
-
-                    payload_queue.put(payload)
-
-                    box_color = (0, 0, 255) if in_zone else (0, 255, 0)
-                    cv2.rectangle(frame, (x1, y1), (x2, y2), box_color, 2)
-                    cv2.putText(frame, f"ID:{track_id} {payload['object_class']} {'[BREACH]' if in_zone else ''}",
-                                (x1, y1 - 8), cv2.FONT_HERSHEY_SIMPLEX, 0.5, box_color, 2)
+            for bbox, conf, cls_id, track_id, in_zone, obj_class in active_detections:
+                x1, y1, x2, y2 = map(int, bbox)
+                box_color = (0, 0, 255) if in_zone else (0, 255, 0)
+                cv2.rectangle(frame, (x1, y1), (x2, y2), box_color, 2)
+                cv2.putText(frame, f"ID:{track_id} {obj_class} {'[BREACH]' if in_zone else ''}",
+                            (x1, max(18, y1 - 8)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, box_color, 2)
 
             status_text = "CLAHE: ACTIVE" if was_enhanced else "CLAHE: OFF"
             cv2.putText(frame, status_text, (20, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
             cv2.putText(frame, f"CHANNEL: {camera_id.upper()}", (frame_width - 240, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
 
-            # Stream annotated frame to web application
-            enc_ret, jpeg_buffer = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 75])
+            # Resize if large for fast transmission and smooth playback
+            if frame_width > 960:
+                stream_frame = cv2.resize(frame, (960, int(frame_height * 960 / frame_width)))
+            else:
+                stream_frame = frame
+
+            enc_ret, jpeg_buffer = cv2.imencode('.jpg', stream_frame, [int(cv2.IMWRITE_JPEG_QUALITY), 70])
             if enc_ret:
-                try:
-                    frame_stream_queue.put_nowait((camera_id, jpeg_buffer.tobytes()))
-                except queue.Full:
-                    try:
-                        frame_stream_queue.get_nowait()
-                        frame_stream_queue.task_done()
-                    except queue.Empty:
-                        pass
-                    try:
-                        frame_stream_queue.put_nowait((camera_id, jpeg_buffer.tobytes()))
-                    except queue.Full:
-                        pass
+                update_stream_frame(camera_id, jpeg_buffer.tobytes())
+
+            time.sleep(0.025)
+
     except KeyboardInterrupt:
         print("\n[AI Pipeline] Stream stopped by user.")
     finally:
+        stop_event.set()
         cap.release()
         payload_queue.put(None)
-        frame_stream_queue.put(None)
 
 # ----------------------------------------------------
 # 5. ALL-IN-ONE MULTI-CAMERA SURVEILLANCE ENGINE
@@ -279,44 +297,73 @@ ALL_CAMERAS_PLAN = [
         "cam_id": "cam-04",
         "name": "CAM-04 · NORTH PERIMETER",
         "source": VIDEO_PRESETS["1"],
-        "zone_id": "ZONE_A"
+        "zone_id": "ZONE_A",
+        "zone_ratios": [(0.15, 0.40), (0.85, 0.40), (0.95, 0.90), (0.05, 0.90)],
+        "start_offset": 0
     },
     {
         "cam_id": "cam-02",
         "name": "CAM-02 · FENCE BRAVO",
         "source": VIDEO_PRESETS["2"],
-        "zone_id": "ZONE_BRAVO"
+        "zone_id": "ZONE_BRAVO",
+        "zone_ratios": [(0.10, 0.48), (0.90, 0.48), (0.95, 0.92), (0.05, 0.92)],
+        "start_offset": 0
     },
     {
         "cam_id": "cam-03",
         "name": "CAM-03 · RIVERINE WATCH",
         "source": VIDEO_PRESETS["3"],
-        "zone_id": "ZONE_RIVERINE"
+        "zone_id": "ZONE_RIVERINE",
+        "zone_ratios": [(0.15, 0.35), (0.85, 0.35), (0.92, 0.85), (0.08, 0.85)],
+        "start_offset": 0
     },
     {
         "cam_id": "cam-01",
         "name": "CAM-01 · GATE ALPHA",
-        "source": VIDEO_PRESETS["3"],
-        "zone_id": "ZONE_GATEWAY"
+        "source": VIDEO_PRESETS["1"],
+        "zone_id": "ZONE_GATEWAY",
+        "zone_ratios": [(0.20, 0.45), (0.80, 0.45), (0.88, 0.88), (0.12, 0.88)],
+        "start_offset": 85
     }
 ]
 
-def camera_stream_worker(cam_cfg, model, stop_event, imgsz=480, conf_threshold=0.35):
-    cam_id = cam_cfg["cam_id"]
+def camera_stream_worker(cam_cfg, stop_event, imgsz=416, conf_threshold=0.35):
+    """
+    Dedicated worker per camera:
+    - Runs independent YOLOv8 model instance with isolated ByteTrack state
+    - Paces inference every 3rd frame (~8-10 FPS) while rendering smooth ~25 FPS video
+    - Pushes compressed stream frames to latest_camera_frames
+    """
+    cam_id = cam_cfg["cam_id"].lower()
     source = cam_cfg["source"]
     zone_id = cam_cfg["zone_id"]
+    zone_ratios = cam_cfg.get("zone_ratios", ZONE_COORDINATE_RATIOS)
+    start_offset = cam_cfg.get("start_offset", 0)
+
+    # Independent YOLO instance per camera thread: prevents tracker/predictor state cross-talk!
+    cam_model = YOLO(MODEL_PATH)
+
     cap = cv2.VideoCapture(source)
     if not cap.isOpened():
         print(f"[{cam_id.upper()}] Failed to open source: {source}")
         return
 
+    if start_offset > 0:
+        total_f = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        if total_f > start_offset:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, start_offset)
+
     frame_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     frame_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    poly_points = [(int(x * frame_w), int(y * frame_h)) for x, y in ZONE_COORDINATE_RATIOS]
+    poly_points = [(int(x * frame_w), int(y * frame_h)) for x, y in zone_ratios]
     tripwire_poly = Polygon(poly_points)
     poly_np = np.array(poly_points, np.int32).reshape((-1, 1, 2))
 
-    print(f"[{cam_id.upper()}] Running live AI tracking on: {os.path.basename(str(source))}")
+    print(f"[{cam_id.upper()}] Running isolated AI tracking on: {os.path.basename(str(source))} (Zone: {zone_id})")
+
+    frame_idx = 0
+    active_detections = []
+    INFERENCE_INTERVAL = 3  # Run YOLO every 3rd frame to cut CPU load by 67%
 
     while not stop_event.is_set() and cap.isOpened():
         ret, frame = cap.read()
@@ -327,101 +374,121 @@ def camera_stream_worker(cam_cfg, model, stop_event, imgsz=480, conf_threshold=0
             if not ret:
                 break
 
+        frame_idx += 1
+        run_yolo = (frame_idx % INFERENCE_INTERVAL == 0)
+
         enhanced, was_enhanced = apply_clahe_enhancement(frame)
-        results = model.track(
-            source=enhanced,
-            classes=list(TARGET_CLASSES.keys()),
-            conf=conf_threshold,
-            imgsz=imgsz,
-            persist=True,
-            tracker="bytetrack.yaml",
-            verbose=False
-        )
 
+        if run_yolo:
+            results = cam_model.track(
+                source=enhanced,
+                classes=list(TARGET_CLASSES.keys()),
+                conf=conf_threshold,
+                imgsz=imgsz,
+                persist=True,
+                tracker="bytetrack.yaml",
+                verbose=False
+            )
+
+            active_detections = []
+            if results[0].boxes and results[0].boxes.id is not None:
+                boxes = results[0].boxes.xyxy.cpu().numpy()
+                confidences = results[0].boxes.conf.cpu().numpy()
+                class_ids = results[0].boxes.cls.cpu().numpy().astype(int)
+                track_ids = results[0].boxes.id.cpu().numpy().astype(int)
+
+                for bbox, conf, cls_id, track_id in zip(boxes, confidences, class_ids, track_ids):
+                    x1, y1, x2, y2 = map(int, bbox)
+                    bottom_center = Point(int((x1 + x2) / 2), y2)
+                    in_zone = tripwire_poly.contains(bottom_center)
+
+                    frame_b64 = None
+                    if in_zone:
+                        crop = frame[max(0, y1):min(frame_h, y2), max(0, x1):min(frame_w, x2)]
+                        if crop.size > 0:
+                            _, buffer = cv2.imencode('.jpg', crop)
+                            frame_b64 = base64.b64encode(buffer).decode('utf-8')
+
+                    payload = {
+                        "object_class": str(TARGET_CLASSES.get(cls_id, "unknown")),
+                        "confidence": float(round(float(conf), 2)),
+                        "bbox": [int(x1), int(y1), int(x2), int(y2)],
+                        "track_id": int(track_id),
+                        "in_zone": bool(in_zone),
+                        "zone_id": zone_id,
+                        "frame_image": frame_b64,
+                        "timestamp": int(time.time())
+                    }
+                    try:
+                        payload_queue.put_nowait(payload)
+                    except queue.Full:
+                        pass
+
+                    active_detections.append((bbox, conf, cls_id, track_id, in_zone, payload["object_class"]))
+
+        # Render bounding boxes and zone vector
         cv2.polylines(frame, [poly_np], isClosed=True, color=(0, 0, 255), thickness=2)
-
-        if results[0].boxes and results[0].boxes.id is not None:
-            boxes = results[0].boxes.xyxy.cpu().numpy()
-            confidences = results[0].boxes.conf.cpu().numpy()
-            class_ids = results[0].boxes.cls.cpu().numpy().astype(int)
-            track_ids = results[0].boxes.id.cpu().numpy().astype(int)
-
-            for bbox, conf, cls_id, track_id in zip(boxes, confidences, class_ids, track_ids):
-                x1, y1, x2, y2 = map(int, bbox)
-                bottom_center = Point(int((x1 + x2) / 2), y2)
-                in_zone = tripwire_poly.contains(bottom_center)
-
-                frame_b64 = None
-                if in_zone:
-                    crop = frame[max(0, y1):min(frame_h, y2), max(0, x1):min(frame_w, x2)]
-                    if crop.size > 0:
-                        _, buffer = cv2.imencode('.jpg', crop)
-                        frame_b64 = base64.b64encode(buffer).decode('utf-8')
-
-                payload = {
-                    "object_class": str(TARGET_CLASSES.get(cls_id, "unknown")),
-                    "confidence": float(round(float(conf), 2)),
-                    "bbox": [int(x1), int(y1), int(x2), int(y2)],
-                    "track_id": int(track_id),
-                    "in_zone": bool(in_zone),
-                    "zone_id": zone_id,
-                    "frame_image": frame_b64,
-                    "timestamp": int(time.time())
-                }
-                payload_queue.put(payload)
-
-                box_color = (0, 0, 255) if in_zone else (0, 255, 0)
-                cv2.rectangle(frame, (x1, y1), (x2, y2), box_color, 2)
-                cv2.putText(frame, f"ID:{track_id} {payload['object_class']} {'[BREACH]' if in_zone else ''}",
-                            (x1, y1 - 8), cv2.FONT_HERSHEY_SIMPLEX, 0.5, box_color, 2)
+        for bbox, conf, cls_id, track_id, in_zone, obj_class in active_detections:
+            x1, y1, x2, y2 = map(int, bbox)
+            box_color = (0, 0, 255) if in_zone else (0, 255, 0)
+            cv2.rectangle(frame, (x1, y1), (x2, y2), box_color, 2)
+            cv2.putText(frame, f"ID:{track_id} {obj_class} {'[BREACH]' if in_zone else ''}",
+                        (x1, max(18, y1 - 8)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, box_color, 2)
 
         status_text = "CLAHE: ACTIVE" if was_enhanced else "CLAHE: OFF"
         cv2.putText(frame, status_text, (20, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
         cv2.putText(frame, f"CHANNEL: {cam_id.upper()}", (frame_w - 240, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
 
-        enc_ret, jpeg_buffer = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 70])
-        if enc_ret:
-            try:
-                frame_stream_queue.put_nowait((cam_id, jpeg_buffer.tobytes()))
-            except queue.Full:
-                try:
-                    frame_stream_queue.get_nowait()
-                    frame_stream_queue.task_done()
-                except queue.Empty:
-                    pass
-                try:
-                    frame_stream_queue.put_nowait((cam_id, jpeg_buffer.tobytes()))
-                except queue.Full:
-                    pass
+        # Scale down for fast JPEG encoding & smooth streaming over localhost HTTP
+        if frame_w > 800:
+            stream_frame = cv2.resize(frame, (800, int(frame_h * 800 / frame_w)))
+        else:
+            stream_frame = frame
 
-        # Smooth pacing for multi-camera CPU stability
-        time.sleep(0.035)
+        enc_ret, jpeg_buffer = cv2.imencode('.jpg', stream_frame, [int(cv2.IMWRITE_JPEG_QUALITY), 65])
+        if enc_ret:
+            update_stream_frame(cam_id, jpeg_buffer.tobytes())
+
+        # Pacing for ~25 FPS smooth video playback
+        time.sleep(0.030)
 
     cap.release()
 
-def run_all_cameras(conf_threshold=0.35, imgsz=480):
+def run_all_cameras(conf_threshold=0.35, imgsz=416):
     print("==================================================")
     print("  SIMA-DRISHTI FULL MULTI-CAMERA SURVEILLANCE GRID")
     print("==================================================")
-    print("Spawning simultaneous AI pipelines across all 4 cameras:")
+    print("Spawning simultaneous isolated AI pipelines across all 4 cameras:")
     for cfg in ALL_CAMERAS_PLAN:
         print(f"  • {cfg['cam_id'].upper()} -> {os.path.basename(str(cfg['source']))} ({cfg['zone_id']})")
     print(f"FastAPI Ingestion Endpoint: {BACKEND_ENDPOINT}")
     print(f"Live Web Video Feed: {STREAM_ENDPOINT}")
     print("==================================================")
 
-    model = YOLO(MODEL_PATH)
     stop_event = threading.Event()
-    threads = []
+    worker_threads = []
+    sender_threads = []
 
+    # Start dedicated stream sender thread per camera (non-blocking, smooth ~22 FPS)
     for cfg in ALL_CAMERAS_PLAN:
-        t = threading.Thread(
-            target=camera_stream_worker,
-            args=(cfg, model, stop_event, imgsz, conf_threshold),
+        cam_id = cfg["cam_id"].lower()
+        st = threading.Thread(
+            target=camera_stream_sender,
+            args=(cam_id, stop_event),
             daemon=True
         )
-        threads.append(t)
-        t.start()
+        sender_threads.append(st)
+        st.start()
+
+    # Start independent camera tracking worker per camera
+    for cfg in ALL_CAMERAS_PLAN:
+        wt = threading.Thread(
+            target=camera_stream_worker,
+            args=(cfg, stop_event, imgsz, conf_threshold),
+            daemon=True
+        )
+        worker_threads.append(wt)
+        wt.start()
 
     try:
         while True:
@@ -429,10 +496,11 @@ def run_all_cameras(conf_threshold=0.35, imgsz=480):
     except KeyboardInterrupt:
         print("\n[AI Pipeline] Stopping all cameras...")
         stop_event.set()
-        for t in threads:
+        for t in worker_threads:
+            t.join(timeout=1.0)
+        for t in sender_threads:
             t.join(timeout=1.0)
         payload_queue.put(None)
-        frame_stream_queue.put(None)
         print("[AI Pipeline] All cameras stopped.")
 
 if __name__ == "__main__":
@@ -461,15 +529,15 @@ if __name__ == "__main__":
     parser.add_argument(
         "--imgsz",
         type=int,
-        default=640,
-        help="Inference image resolution (default: 640)"
+        default=416,
+        help="Inference image resolution (default: 416)"
     )
     args = parser.parse_args()
 
     if args.all:
         run_all_cameras(
             conf_threshold=args.conf,
-            imgsz=args.imgsz if args.imgsz != 640 else 480
+            imgsz=args.imgsz
         )
     else:
         run_pipeline(

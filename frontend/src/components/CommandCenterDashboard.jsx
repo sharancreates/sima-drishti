@@ -247,8 +247,12 @@ export default function CommandCenterDashboard({ onSelectAlert }) {
     };
   }, []);
 
-  const isCurrentCamStreaming = streamInfo.is_streaming && 
-    (streamInfo.active_cams?.includes(activeCam) || streamInfo.active_cam?.toLowerCase() === activeCam.toLowerCase());
+  const isCurrentCamStreaming = Boolean(
+    streamInfo.is_streaming && 
+    (streamInfo.active_cams && streamInfo.active_cams.length > 0
+      ? streamInfo.active_cams.some(c => c.toLowerCase() === activeCam.toLowerCase())
+      : streamInfo.active_cam?.toLowerCase() === activeCam.toLowerCase())
+  );
 
   // Tactical sound synthesizer
   const playTacticalBeep = (freq = 880, duration = 0.25) => {
@@ -850,7 +854,9 @@ export default function CommandCenterDashboard({ onSelectAlert }) {
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
                   {streamInfo.is_streaming && 
-                    (streamInfo.active_cams?.includes(cam.id) || streamInfo.active_cam?.toLowerCase() === cam.id.toLowerCase()) && (
+                    (streamInfo.active_cams && streamInfo.active_cams.length > 0
+                      ? streamInfo.active_cams.some(c => c.toLowerCase() === cam.id.toLowerCase())
+                      : streamInfo.active_cam?.toLowerCase() === cam.id.toLowerCase()) && (
                     <span className="text-[8px] font-bold px-1 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-500/80 animate-pulse">
                       AI LIVE
                     </span>

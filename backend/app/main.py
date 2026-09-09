@@ -121,26 +121,32 @@ class VideoStreamManager:
 
     def set_frame(self, frame_bytes: bytes, cam_id: str = "cam-04"):
         now = time.time()
+        c_id = str(cam_id).strip().lower()
         self.latest_frame = frame_bytes
         self.last_frame_time = now
-        self.active_cam = cam_id
-        self.frames[cam_id] = {"bytes": frame_bytes, "time": now}
+        self.active_cam = c_id
+        self.frames[c_id] = {"bytes": frame_bytes, "time": now}
 
     async def get_frame_stream(self, cam_id: str | None = None):
+        target_cam = str(cam_id).strip().lower() if cam_id else None
+        last_sent_time = 0.0
         while True:
             now = time.time()
             frame_data = None
-            if cam_id and cam_id in self.frames and (now - self.frames[cam_id]["time"] < 3.0):
-                frame_data = self.frames[cam_id]
-            elif self.latest_frame and (now - self.last_frame_time < 3.0):
+            if target_cam:
+                # Strictly isolate stream to the requested camera - never leak other camera feeds
+                if target_cam in self.frames and (now - self.frames[target_cam]["time"] < 6.0):
+                    frame_data = self.frames[target_cam]
+            elif self.latest_frame and (now - self.last_frame_time < 6.0):
                 frame_data = {"bytes": self.latest_frame, "time": self.last_frame_time}
 
-            if frame_data and (now - frame_data["time"] < 3.0):
+            if frame_data and frame_data["time"] != last_sent_time:
+                last_sent_time = frame_data["time"]
                 yield (
                     b"--frame\r\n"
                     b"Content-Type: image/jpeg\r\n\r\n" + frame_data["bytes"] + b"\r\n"
                 )
-            await asyncio.sleep(0.033)
+            await asyncio.sleep(0.035)
 
 video_stream_manager = VideoStreamManager()
 
@@ -149,9 +155,10 @@ async def upload_stream_frame(request: Request, cam_id: str = "cam-04"):
     """Ingests real-time JPEG frames from edge AI pipeline for any camera."""
     body = await request.body()
     if body:
-        header_cam = request.headers.get("X-Camera-ID", cam_id)
-        video_stream_manager.set_frame(body, header_cam)
-        return {"status": "ok", "bytes": len(body), "cam_id": header_cam}
+        header_cam = request.headers.get("X-Camera-ID") or request.query_params.get("cam_id") or cam_id
+        target_cam = str(header_cam).strip().lower()
+        video_stream_manager.set_frame(body, target_cam)
+        return {"status": "ok", "bytes": len(body), "cam_id": target_cam}
     return {"status": "empty"}
 
 @app.get("/stream/video_feed")
@@ -166,10 +173,10 @@ async def stream_video_feed(cam_id: str | None = None):
 def stream_status(cam_id: str | None = None):
     """Returns streaming health, active camera, and all actively broadcasting camera IDs."""
     now = time.time()
-    active_cams = [cid for cid, f in video_stream_manager.frames.items() if (now - f["time"] < 3.5)]
+    active_cams = [cid for cid, f in video_stream_manager.frames.items() if (now - f["time"] < 5.0)]
     age = now - video_stream_manager.last_frame_time if video_stream_manager.last_frame_time > 0 else 999.0
     return {
-        "is_streaming": age < 3.5,
+        "is_streaming": age < 5.0,
         "active_cam": video_stream_manager.active_cam,
         "active_cams": active_cams,
         "last_frame_age_seconds": round(age, 2),
