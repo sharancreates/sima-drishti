@@ -153,8 +153,7 @@ def camera_stream_sender(cam_id: str, stop_event: threading.Event):
             try:
                 session.post(url, data=frame_bytes, headers=headers, timeout=0.3)
             except Exception:
-                pass
-        time.sleep(0.045)  # ~22 FPS pacing to backend
+        time.sleep(0.060)  # Paced ~16 FPS to FastAPI backend to prevent HTTP socket saturation
 
 network_thread = threading.Thread(target=backend_sender_worker, daemon=True)
 network_thread.start()
@@ -328,17 +327,17 @@ def run_pipeline(source="1", camera_id="cam-04", conf_threshold=0.25, imgsz=640)
             cv2.putText(frame, status_text, (20, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
             cv2.putText(frame, f"CHANNEL: {camera_id.upper()}", (frame_width - 240, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
 
-            # Resize if large for fast transmission and smooth playback
-            if frame_width > 960:
-                stream_frame = cv2.resize(frame, (960, int(frame_height * 960 / frame_width)))
+            # Scale down for fast JPEG encoding & smooth streaming over localhost HTTP
+            if frame_width > 640:
+                stream_frame = cv2.resize(frame, (640, int(frame_height * 640 / frame_width)))
             else:
                 stream_frame = frame
 
-            enc_ret, jpeg_buffer = cv2.imencode('.jpg', stream_frame, [int(cv2.IMWRITE_JPEG_QUALITY), 70])
+            enc_ret, jpeg_buffer = cv2.imencode('.jpg', stream_frame, [int(cv2.IMWRITE_JPEG_QUALITY), 55])
             if enc_ret:
                 update_stream_frame(camera_id, jpeg_buffer.tobytes())
 
-            time.sleep(0.025)
+            time.sleep(0.015)
 
     except KeyboardInterrupt:
         print("\n[AI Pipeline] Stream stopped by user.")
@@ -424,6 +423,7 @@ def camera_stream_worker(cam_cfg, stop_event, imgsz=640, conf_threshold=0.20):
     INFERENCE_INTERVAL = 2  # Paced for high accuracy and smooth ~25 FPS
 
     while not stop_event.is_set() and cap.isOpened():
+        loop_start_t = time.time()
         ret, frame = cap.read()
         if not ret:
             if isinstance(source, str) and os.path.exists(source):
@@ -524,18 +524,19 @@ def camera_stream_worker(cam_cfg, stop_event, imgsz=640, conf_threshold=0.20):
         cv2.putText(frame, status_text, (20, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
         cv2.putText(frame, f"CHANNEL: {cam_id.upper()}", (frame_w - 240, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
 
-        # Scale down for fast JPEG encoding & smooth streaming over localhost HTTP
-        if frame_w > 800:
-            stream_frame = cv2.resize(frame, (800, int(frame_h * 800 / frame_w)))
+        # Scale down for fast JPEG encoding & ultra-smooth streaming over localhost HTTP
+        if frame_w > 640:
+            stream_frame = cv2.resize(frame, (640, int(frame_h * 640 / frame_w)))
         else:
             stream_frame = frame
 
-        enc_ret, jpeg_buffer = cv2.imencode('.jpg', stream_frame, [int(cv2.IMWRITE_JPEG_QUALITY), 65])
+        enc_ret, jpeg_buffer = cv2.imencode('.jpg', stream_frame, [int(cv2.IMWRITE_JPEG_QUALITY), 55])
         if enc_ret:
             update_stream_frame(cam_id, jpeg_buffer.tobytes())
 
-        # Pacing for ~25 FPS smooth video playback
-        time.sleep(0.030)
+        # Dynamic loop pacing: ensures constant 30 FPS playback without accumulating delay
+        elapsed = time.time() - loop_start_t
+        time.sleep(max(0.002, 0.033 - elapsed))
 
     cap.release()
 

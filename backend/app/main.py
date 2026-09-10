@@ -375,6 +375,7 @@ async def receive_detection(payload: DetectionPayload, db: Session = Depends(get
             "lng": new_alert.lng,
             "confidence": new_alert.confidence,
             "status": new_alert.status,
+            "reason": reason,
             "timestamp": new_alert.timestamp.isoformat()
         }
         await manager.broadcast(alert_data)

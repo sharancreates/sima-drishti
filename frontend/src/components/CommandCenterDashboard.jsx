@@ -330,6 +330,8 @@ export default function CommandCenterDashboard({ onSelectAlert }) {
   const [availableVideos, setAvailableVideos] = useState(ALL_MEDIA_VIDEOS);
   const [videoCategoryFilter, setVideoCategoryFilter] = useState('ALL');
   const [videoSearchQuery, setVideoSearchQuery] = useState('');
+  const [modalTargetCam, setModalTargetCam] = useState('cam-01');
+  const [feedModeOverride, setFeedModeOverride] = useState({}); // { [camId]: 'archive' | 'ai_stream' }
 
   // Active breached screens metric (out of the 4 screens)
   const activeBreachedScreens = cameras.filter(c => c.status === 'ALERT' || c.isAlert).length;
@@ -352,12 +354,16 @@ export default function CommandCenterDashboard({ onSelectAlert }) {
 
   // Deploy any of the 21 videos from ai_engine/media to any camera
   const handleAssignVideoToCam = (camId, videoUrl) => {
+    const target = (camId || activeCam).toLowerCase();
     setCameras(prev => prev.map(c => {
-      if (c.id.toLowerCase() === camId.toLowerCase()) {
+      if (c.id.toLowerCase() === target) {
         return { ...c, videoSrc: videoUrl };
       }
       return c;
     }));
+    // Immediately switch this camera to archive mode so the chosen video loads and plays
+    setFeedModeOverride(prev => ({ ...prev, [target]: 'archive' }));
+    setActiveCam(target);
     setVideoLibraryOpen(false);
   };
 
@@ -398,12 +404,19 @@ export default function CommandCenterDashboard({ onSelectAlert }) {
     };
   }, []);
 
-  const isCurrentCamStreaming = Boolean(
+  const isCurrentCamAiStreamAvailable = Boolean(
     streamInfo.is_streaming && 
     (streamInfo.active_cams && streamInfo.active_cams.length > 0
       ? streamInfo.active_cams.some(c => c.toLowerCase() === activeCam.toLowerCase())
       : streamInfo.active_cam?.toLowerCase() === activeCam.toLowerCase())
   );
+
+  const currentCamOverride = feedModeOverride[activeCam.toLowerCase()];
+  const effectiveFeedMode = currentCamOverride 
+    ? currentCamOverride 
+    : (isCurrentCamAiStreamAvailable ? 'ai_stream' : 'archive');
+
+  const isCurrentCamStreaming = effectiveFeedMode === 'ai_stream' && isCurrentCamAiStreamAvailable;
 
   // Tactical sound synthesizer
   const playTacticalBeep = (freq = 880, duration = 0.25) => {
@@ -719,13 +732,36 @@ export default function CommandCenterDashboard({ onSelectAlert }) {
                 {currentCam.name} [{currentCam.sector}]
               </span>
             </div>
-            <div className="flex items-center gap-3 text-xs font-mono">
-              {isCurrentCamStreaming && (
-                <div className="flex items-center gap-1.5 text-cyan-300 bg-cyan-500/20 px-2.5 py-0.5 rounded border border-cyan-400/60 shadow-[0_0_10px_rgba(6,182,212,0.3)] animate-pulse">
-                  <span className="w-1.5 h-1.5 rounded-full bg-cyan-400"></span>
-                  <span className="font-bold tracking-wider text-[11px]">LIVE AI STREAM ({currentCam.name})</span>
-                </div>
-              )}
+            <div className="flex items-center gap-2 text-xs font-mono">
+              {/* Dual-Mode Selector: AI STREAM vs NATIVE 60FPS */}
+              <div className="flex items-center bg-slate-950/90 p-0.5 rounded border border-slate-700/80 shadow-inner">
+                <button
+                  onClick={() => setFeedModeOverride(prev => ({ ...prev, [activeCam.toLowerCase()]: 'ai_stream' }))}
+                  disabled={!isCurrentCamAiStreamAvailable}
+                  className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold transition flex items-center gap-1 ${
+                    isCurrentCamStreaming
+                      ? 'bg-cyan-600 text-white shadow-[0_0_8px_rgba(6,182,212,0.5)]'
+                      : 'text-slate-400 hover:text-slate-200 disabled:opacity-30 disabled:cursor-not-allowed'
+                  }`}
+                  title={isCurrentCamAiStreamAvailable ? "Switch to live AI detection stream" : "AI Stream offline (start ai_pipeline.py)"}
+                >
+                  <span className={`w-1.5 h-1.5 rounded-full ${isCurrentCamStreaming ? 'bg-white animate-pulse' : 'bg-slate-500'}`}></span>
+                  AI STREAM
+                </button>
+                <button
+                  onClick={() => setFeedModeOverride(prev => ({ ...prev, [activeCam.toLowerCase()]: 'archive' }))}
+                  className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold transition flex items-center gap-1 ${
+                    !isCurrentCamStreaming
+                      ? 'bg-indigo-600 text-white shadow-[0_0_8px_rgba(99,102,241,0.5)]'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                  title="Switch to 60FPS native tactical video"
+                >
+                  <Zap className="w-3 h-3" />
+                  60FPS HD
+                </button>
+              </div>
+
               <span className="text-slate-400 hidden sm:inline">{currentCam.rtspUrl}</span>
               <div className="flex items-center gap-1 text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/30">
                 <Wifi className="w-3 h-3" />
@@ -758,12 +794,15 @@ export default function CommandCenterDashboard({ onSelectAlert }) {
             ) : (
               <video 
                 ref={videoRef}
-                key={currentCam.id}
+                key={`${currentCam.id}-${currentCam.videoSrc}`}
                 src={currentCam.videoSrc}
                 autoPlay
                 loop
                 muted
                 playsInline
+                onLoadedData={(e) => {
+                  e.target.play().catch(() => {});
+                }}
                 className={`w-full h-full object-cover transition-all duration-300 ${
                   viewMode === 'thermal'
                     ? 'filter invert contrast-[180%] brightness-110 hue-rotate-180 saturate-[220%]'
@@ -982,7 +1021,10 @@ export default function CommandCenterDashboard({ onSelectAlert }) {
               <div className="h-4 w-px bg-slate-700 mx-1"></div>
 
               <button
-                onClick={() => setVideoLibraryOpen(true)}
+                onClick={() => {
+                  setModalTargetCam(activeCam);
+                  setVideoLibraryOpen(true);
+                }}
                 className="px-2.5 py-1 rounded flex items-center gap-1.5 transition bg-indigo-950 hover:bg-indigo-900/90 border border-indigo-500/60 text-indigo-300 hover:text-indigo-100 font-bold shadow"
                 title="Browse and deploy all 21 surveillance videos from ai_engine/media"
               >
@@ -1166,6 +1208,27 @@ export default function CommandCenterDashboard({ onSelectAlert }) {
                     {alert.desc}
                   </p>
 
+                  {/* 4-Way Tactical Fusion Agreement Badge */}
+                  <div className="flex flex-wrap items-center gap-1 mt-1 text-[9px] font-mono">
+                    <span className="px-1.5 py-0.5 rounded bg-emerald-950/90 text-emerald-300 border border-emerald-600/80 font-bold flex items-center gap-1 shadow-sm">
+                      <Check className="w-2.5 h-2.5 text-emerald-400" /> CLASS
+                    </span>
+                    <span className="px-1.5 py-0.5 rounded bg-emerald-950/90 text-emerald-300 border border-emerald-600/80 font-bold flex items-center gap-1 shadow-sm">
+                      <Check className="w-2.5 h-2.5 text-emerald-400" /> ZONE
+                    </span>
+                    <span className="px-1.5 py-0.5 rounded bg-emerald-950/90 text-emerald-300 border border-emerald-600/80 font-bold flex items-center gap-1 shadow-sm">
+                      <Check className="w-2.5 h-2.5 text-emerald-400" /> TRAJECTORY
+                    </span>
+                    <span className="px-1.5 py-0.5 rounded bg-emerald-950/90 text-emerald-300 border border-emerald-600/80 font-bold flex items-center gap-1 shadow-sm">
+                      <Check className="w-2.5 h-2.5 text-emerald-400" /> DWELL
+                    </span>
+                  </div>
+                  {alert.reason && (
+                    <div className="text-[9px] font-mono text-slate-400 bg-slate-950/70 px-2 py-1 rounded border border-slate-800 line-clamp-2">
+                      {alert.reason}
+                    </div>
+                  )}
+
                   {/* Footer buttons */}
                   <div className="flex items-center justify-between pt-2 border-t border-slate-800/80 mt-1">
                     <span className="text-[10px] font-mono text-blue-400 font-semibold">
@@ -1235,9 +1298,28 @@ export default function CommandCenterDashboard({ onSelectAlert }) {
                       {availableVideos.length} FEEDS FROM AI_ENGINE/MEDIA
                     </span>
                   </div>
-                  <p className="text-xs text-slate-400 mt-0.5">
-                    Select any recorded border corridor feed to assign to screen: <span className="text-amber-300 font-mono font-bold">{currentCam.name}</span>
-                  </p>
+                  <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                    <span className="text-[11px] text-slate-400 font-mono font-semibold">DEPLOY TO:</span>
+                    {cameras.map(c => (
+                      <button
+                        key={c.id}
+                        onClick={() => {
+                          setModalTargetCam(c.id);
+                          setActiveCam(c.id);
+                        }}
+                        className={`px-2 py-0.5 rounded text-[11px] font-mono font-bold border transition ${
+                          modalTargetCam.toLowerCase() === c.id.toLowerCase()
+                            ? 'bg-amber-500 text-slate-950 border-amber-400 shadow font-bold'
+                            : 'bg-slate-800 text-slate-300 border-slate-700 hover:border-slate-500'
+                        }`}
+                      >
+                        {c.id.toUpperCase()}
+                      </button>
+                    ))}
+                    <span className="text-[11px] text-amber-300 font-mono ml-1">
+                      ({cameras.find(c => c.id.toLowerCase() === modalTargetCam.toLowerCase())?.name || currentCam.name})
+                    </span>
+                  </div>
                 </div>
               </div>
               <button 
@@ -1291,18 +1373,21 @@ export default function CommandCenterDashboard({ onSelectAlert }) {
                   return matchesCat && matchesSearch;
                 })
                 .map(v => {
-                  const isSelected = (currentCam.videoSrc || '').includes(v.filename);
+                  const targetCamObj = cameras.find(c => c.id.toLowerCase() === modalTargetCam.toLowerCase()) || currentCam;
+                  const isSelected = (targetCamObj.videoSrc || '').includes(v.filename);
+                  const videoDeployUrl = v.url || `/videos/${v.filename}`;
                   return (
                     <div 
                       key={v.id || v.filename}
-                      className={`flex flex-col bg-slate-900/90 border rounded-xl overflow-hidden transition hover:shadow-xl ${
-                        isSelected ? 'border-indigo-500 ring-1 ring-indigo-500' : 'border-slate-800 hover:border-slate-700'
+                      onClick={() => handleAssignVideoToCam(modalTargetCam, videoDeployUrl)}
+                      className={`flex flex-col bg-slate-900/90 border rounded-xl overflow-hidden transition hover:shadow-xl cursor-pointer hover:border-indigo-400 ${
+                        isSelected ? 'border-indigo-500 ring-2 ring-indigo-500/80 shadow-[0_0_15px_rgba(99,102,241,0.3)]' : 'border-slate-800 hover:border-slate-700'
                       }`}
                     >
                       {/* Video Preview */}
                       <div className="relative aspect-video bg-black flex items-center justify-center overflow-hidden group">
                         <video 
-                          src={v.url || `/videos/${v.filename}`} 
+                          src={videoDeployUrl} 
                           muted 
                           loop 
                           playsInline 
@@ -1318,7 +1403,7 @@ export default function CommandCenterDashboard({ onSelectAlert }) {
                         </div>
                         {isSelected && (
                           <div className="absolute top-2 right-2 z-10 px-2 py-0.5 rounded bg-indigo-600 text-white text-[10px] font-mono font-bold flex items-center gap-1">
-                            <Check className="w-3 h-3" /> ACTIVE ON SCREEN
+                            <Check className="w-3 h-3" /> ACTIVE ON {modalTargetCam.toUpperCase()}
                           </div>
                         )}
                       </div>
@@ -1339,7 +1424,10 @@ export default function CommandCenterDashboard({ onSelectAlert }) {
                             {v.size_mb ? `${v.size_mb} MB` : 'MP4 FEED'}
                           </span>
                           <button
-                            onClick={() => handleAssignVideoToCam(activeCam, v.url || `/videos/${v.filename}`)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleAssignVideoToCam(modalTargetCam, videoDeployUrl);
+                            }}
                             className={`px-2.5 py-1 rounded text-[10px] font-mono font-bold transition flex items-center gap-1 ${
                               isSelected 
                                 ? 'bg-emerald-950 text-emerald-300 border border-emerald-700 cursor-default'
@@ -1347,7 +1435,7 @@ export default function CommandCenterDashboard({ onSelectAlert }) {
                             }`}
                           >
                             <Play className="w-3 h-3" />
-                            <span>{isSelected ? 'LOADED' : `DEPLOY TO ${currentCam.id.toUpperCase()}`}</span>
+                            <span>{isSelected ? 'ACTIVE ON SCREEN' : `DEPLOY TO ${modalTargetCam.toUpperCase()}`}</span>
                           </button>
                         </div>
                       </div>
