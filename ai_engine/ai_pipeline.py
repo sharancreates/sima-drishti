@@ -72,9 +72,19 @@ BACKEND_ENDPOINT = os.getenv("BACKEND_ENDPOINT", "http://127.0.0.1:8000/detectio
 API_KEY = os.getenv("API_KEY", "sima-drishti-secure-key-2026")
 STREAM_ENDPOINT = os.getenv("STREAM_ENDPOINT", "http://127.0.0.1:8000/stream/frame")
 
-TARGET_CLASSES = {0: "person", 1: "bicycle", 2: "car", 3: "motorcycle", 7: "truck", 16: "dog"}
+TARGET_CLASSES = {
+    0: "person", 
+    1: "bicycle", 
+    2: "car", 
+    3: "motorcycle", 
+    7: "truck", 
+    16: "dog",
+    18: "sheep",  # Prone/crawling human fallback in exclusion zones
+    19: "cow",    # Prone/crawling human fallback in exclusion zones
+    21: "bear"    # Prone/crawling human fallback in exclusion zones
+}
 THREAT_CLASSES = {"person", "car", "truck", "motorcycle", "bicycle"}
-WILDLIFE_CLASSES = {"dog", "cat", "bird", "horse", "sheep", "cow"}
+WILDLIFE_CLASSES = {"dog", "cat", "bird", "horse"}
 
 ZONE_COORDINATE_RATIOS = [
     (0.08, 0.30),
@@ -265,7 +275,11 @@ def run_pipeline(source="1", camera_id="cam-04", conf_threshold=0.25, imgsz=640)
                                 frame_b64 = base64.b64encode(buffer).decode('utf-8')
 
                         raw_class = TARGET_CLASSES.get(cls_id, "unknown")
-                        obj_label = "person" if raw_class in ("person", "bicycle", "motorcycle") else raw_class
+                        # In military/border trenches, prone crawlers on hands and knees get misclassified by COCO as sheep/cow/bear
+                        if raw_class in ("person", "bicycle", "motorcycle", "sheep", "cow", "bear"):
+                            obj_label = "person"
+                        else:
+                            obj_label = raw_class
 
                         is_threat = (obj_label.lower() in THREAT_CLASSES)
                         is_wildlife = (obj_label.lower() in WILDLIFE_CLASSES or "dog" in obj_label.lower())
@@ -371,7 +385,7 @@ ALL_CAMERAS_PLAN = [
     }
 ]
 
-def camera_stream_worker(cam_cfg, stop_event, imgsz=640, conf_threshold=0.25):
+def camera_stream_worker(cam_cfg, stop_event, imgsz=640, conf_threshold=0.20):
     """
     Dedicated worker per camera:
     - Runs independent YOLOv8 model instance with isolated ByteTrack state
@@ -457,7 +471,11 @@ def camera_stream_worker(cam_cfg, stop_event, imgsz=640, conf_threshold=0.25):
                             frame_b64 = base64.b64encode(buffer).decode('utf-8')
 
                     raw_class = TARGET_CLASSES.get(cls_id, "unknown")
-                    obj_label = "person" if raw_class in ("person", "bicycle", "motorcycle") else raw_class
+                    # In military/border trenches, prone crawlers on hands and knees get misclassified by COCO as sheep/cow/bear
+                    if raw_class in ("person", "bicycle", "motorcycle", "sheep", "cow", "bear"):
+                        obj_label = "person"
+                    else:
+                        obj_label = raw_class
 
                     is_threat = (obj_label.lower() in THREAT_CLASSES)
                     is_wildlife = (obj_label.lower() in WILDLIFE_CLASSES or "dog" in obj_label.lower())
@@ -521,7 +539,7 @@ def camera_stream_worker(cam_cfg, stop_event, imgsz=640, conf_threshold=0.25):
 
     cap.release()
 
-def run_all_cameras(conf_threshold=0.25, imgsz=640):
+def run_all_cameras(conf_threshold=0.20, imgsz=640):
     print("==================================================")
     print("  SIMA-DRISHTI FULL MULTI-CAMERA SURVEILLANCE GRID")
     print("==================================================")
@@ -590,8 +608,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--conf",
         type=float,
-        default=0.25,
-        help="Detection confidence threshold (default: 0.25)"
+        default=0.20,
+        help="Detection confidence threshold (default: 0.20)"
     )
     parser.add_argument(
         "--imgsz",
