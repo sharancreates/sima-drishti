@@ -153,6 +153,7 @@ def camera_stream_sender(cam_id: str, stop_event: threading.Event):
             try:
                 session.post(url, data=frame_bytes, headers=headers, timeout=0.3)
             except Exception:
+                pass
         time.sleep(0.060)  # Paced ~16 FPS to FastAPI backend to prevent HTTP socket saturation
 
 network_thread = threading.Thread(target=backend_sender_worker, daemon=True)
