@@ -16,7 +16,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import func, text
 
-from app.database import Base, engine, get_db
+from app.database import Base, engine, get_db, SessionLocal
 from app.models import AlertLog, Zone
 from app.schemas import DetectionPayload, AlertOut, ZoneCreate, ZoneOut, DispatchRequest, DispatchResponse
 from app.fusion import fusion_engine
@@ -30,7 +30,7 @@ THUMBNAIL_DIR = "static/thumbnails"
 os.makedirs(THUMBNAIL_DIR, exist_ok=True)
 
 def seed_default_zone():
-    """Ensures DB schema compatibility and seeds default Punjab border zone if absent."""
+    """Ensures DB schema compatibility and seeds tactical border zones across all sectors."""
     with engine.connect() as conn:
         try:
             conn.execute(text("ALTER TABLE alerts ADD COLUMN status VARCHAR DEFAULT 'PENDING'"))
@@ -43,21 +43,29 @@ def seed_default_zone():
         except Exception:
             pass
 
-    db = next(get_db())
+    default_zones = [
+        {"zone_id": "ZONE_GATEWAY", "name": "Sector 01 - Gateway Alpha", "camera_id": "cam-01", "lat": 31.4385, "lng": 74.3210, "radius_meters": 500.0},
+        {"zone_id": "ZONE_BRAVO", "name": "Sector 02 - Fence Bravo", "camera_id": "cam-02", "lat": 31.4398, "lng": 74.3245, "radius_meters": 500.0},
+        {"zone_id": "ZONE_RIVERINE", "name": "Sector 03 - Riverine Watch", "camera_id": "cam-03", "lat": 31.4421, "lng": 74.3270, "radius_meters": 500.0},
+        {"zone_id": "ZONE_A", "name": "Sector 04 - North Perimeter", "camera_id": "cam-04", "lat": 31.4392, "lng": 74.3298, "radius_meters": 500.0},
+    ]
+
+    db = SessionLocal()
     try:
-        existing = db.query(Zone).filter((Zone.zone_id == "ZONE_A") | (Zone.name == "ZONE_A")).first()
-        if not existing:
-            default_zone = Zone(
-                zone_id="ZONE_A",
-                name="ZONE_A",
-                camera_id="cam-04",
-                lat=31.4392,
-                lng=74.3298,
-                radius_meters=500.0
-            )
-            db.add(default_zone)
-            db.commit()
-            print("[Database Seed] Seeded default zone: ZONE_A (Lat: 31.4392, Lng: 74.3298, Radius: 500m)")
+        for z_data in default_zones:
+            existing = db.query(Zone).filter((Zone.zone_id == z_data["zone_id"]) | (Zone.name == z_data["zone_id"])).first()
+            if not existing:
+                new_zone = Zone(
+                    zone_id=z_data["zone_id"],
+                    name=z_data["name"],
+                    camera_id=z_data["camera_id"],
+                    lat=z_data["lat"],
+                    lng=z_data["lng"],
+                    radius_meters=z_data["radius_meters"]
+                )
+                db.add(new_zone)
+                print(f"[Database Seed] Seeded tactical border zone: {z_data['zone_id']} ({z_data['camera_id']})")
+        db.commit()
     finally:
         db.close()
 
@@ -72,10 +80,6 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan
 )
-
-@app.on_event("startup")
-def startup_event():
-    seed_default_zone()
 
 app.add_middleware(
     CORSMiddleware,
@@ -130,23 +134,26 @@ class VideoStreamManager:
     async def get_frame_stream(self, cam_id: str | None = None):
         target_cam = str(cam_id).strip().lower() if cam_id else None
         last_sent_time = 0.0
-        while True:
-            now = time.time()
-            frame_data = None
-            if target_cam:
-                # Strictly isolate stream to the requested camera - never leak other camera feeds
-                if target_cam in self.frames and (now - self.frames[target_cam]["time"] < 6.0):
-                    frame_data = self.frames[target_cam]
-            elif self.latest_frame and (now - self.last_frame_time < 6.0):
-                frame_data = {"bytes": self.latest_frame, "time": self.last_frame_time}
+        try:
+            while True:
+                now = time.time()
+                frame_data = None
+                if target_cam:
+                    # Strictly isolate stream to the requested camera - never leak other camera feeds
+                    if target_cam in self.frames and (now - self.frames[target_cam]["time"] < 6.0):
+                        frame_data = self.frames[target_cam]
+                elif self.latest_frame and (now - self.last_frame_time < 6.0):
+                    frame_data = {"bytes": self.latest_frame, "time": self.last_frame_time}
 
-            if frame_data and frame_data["time"] != last_sent_time:
-                last_sent_time = frame_data["time"]
-                yield (
-                    b"--frame\r\n"
-                    b"Content-Type: image/jpeg\r\n\r\n" + frame_data["bytes"] + b"\r\n"
-                )
-            await asyncio.sleep(0.035)
+                if frame_data and frame_data["time"] != last_sent_time:
+                    last_sent_time = frame_data["time"]
+                    yield (
+                        b"--frame\r\n"
+                        b"Content-Type: image/jpeg\r\n\r\n" + frame_data["bytes"] + b"\r\n"
+                    )
+                await asyncio.sleep(0.035)
+        except (asyncio.CancelledError, GeneratorExit):
+            return
 
 video_stream_manager = VideoStreamManager()
 
@@ -228,57 +235,71 @@ def list_zones(db: Session = Depends(get_db)):
     return db.query(Zone).all()
 
 @app.get("/cameras")
-def list_cameras():
-    return [
+def list_cameras(db: Session = Depends(get_db)):
+    # Dynamically determine camera status based on recent alerts (within last 45 seconds)
+    recent_threshold = datetime.utcnow() - timedelta(seconds=45)
+    recent_alerts = db.query(AlertLog).filter(
+        AlertLog.timestamp >= recent_threshold,
+        AlertLog.status == "PENDING"
+    ).all()
+
+    alerting_cams = set()
+    for a in recent_alerts:
+        z = db.query(Zone).filter((Zone.zone_id == a.zone) | (Zone.name == a.zone)).first()
+        if z and z.camera_id:
+            alerting_cams.add(z.camera_id.lower())
+
+    cameras_def = [
         {
             "id": "cam-01",
             "name": "CAM-01 · GATE ALPHA",
-            "status": "ONLINE",
-            "fps": 30,
             "sector": "SEC-1",
             "sector_name": "SECTOR 1A · GATEWAY ALPHA",
             "rtsp_url": "rtsp://192.168.1.101:554/ch01/main",
             "resolution": "1080P · 30 FPS",
+            "fps": 30,
             "lat": 31.4385,
             "lng": 74.3210
         },
         {
             "id": "cam-02",
             "name": "CAM-02 · FENCE BRAVO",
-            "status": "ONLINE",
-            "fps": 30,
             "sector": "SEC-2",
             "sector_name": "SECTOR 2B · FENCE PERIMETER BRAVO",
             "rtsp_url": "rtsp://192.168.2.102:554/ch01/main",
             "resolution": "2K · 30 FPS",
+            "fps": 30,
             "lat": 31.4398,
             "lng": 74.3245
         },
         {
             "id": "cam-03",
             "name": "CAM-03 · RIVERINE WATCH",
-            "status": "ONLINE",
-            "fps": 28,
             "sector": "SEC-3",
             "sector_name": "SECTOR 3C · RIVERINE EMBANKMENT",
             "rtsp_url": "rtsp://192.168.3.103:554/ch01/main",
             "resolution": "1080P · 28 FPS",
+            "fps": 28,
             "lat": 31.4421,
             "lng": 74.3270
         },
         {
             "id": "cam-04",
             "name": "CAM-04 · NORTH PERIMETER",
-            "status": "ALERT",
-            "fps": 30,
             "sector": "SEC-4A",
             "sector_name": "SECTOR 4A · NORTH PERIMETER",
             "rtsp_url": "rtsp://192.168.4.108:554/live",
             "resolution": "4K · 30 FPS",
+            "fps": 30,
             "lat": 31.4392,
             "lng": 74.3298
         }
     ]
+
+    for cam in cameras_def:
+        cam["status"] = "ALERT" if cam["id"].lower() in alerting_cams else "ONLINE"
+
+    return cameras_def
 
 @app.websocket("/ws/alerts")
 async def websocket_endpoint(websocket: WebSocket):
@@ -294,10 +315,23 @@ async def receive_detection(payload: DetectionPayload, db: Session = Depends(get
     is_confirmed, reason = fusion_engine.process(payload)
 
     if is_confirmed:
-        zone_info = db.query(Zone).filter(Zone.zone_id == payload.zone_id).first()
-        lat = zone_info.lat if zone_info else 28.7041
-        lng = zone_info.lng if zone_info else 77.1025
-        zone_name = zone_info.name if zone_info else payload.zone_id
+        # Resolve zone and camera association
+        zone_info = db.query(Zone).filter((Zone.zone_id == payload.zone_id) | (Zone.name == payload.zone_id)).first()
+        
+        # Sector Punjab border coordinate fallbacks (never hardcoded New Delhi)
+        sector_coords = {
+            "cam-01": (31.4385, 74.3210),
+            "cam-02": (31.4398, 74.3245),
+            "cam-03": (31.4421, 74.3270),
+            "cam-04": (31.4392, 74.3298)
+        }
+        
+        resolved_cam = (payload.camera_id or (zone_info.camera_id if zone_info else "cam-04")).lower()
+        default_lat, default_lng = sector_coords.get(resolved_cam, (31.4392, 74.3298))
+        
+        lat = zone_info.lat if zone_info else default_lat
+        lng = zone_info.lng if zone_info else default_lng
+        zone_name = zone_info.name if zone_info else (payload.zone_id or "ZONE_A")
 
         thumbnail_url = ""
         if payload.frame_image:
@@ -330,6 +364,8 @@ async def receive_detection(payload: DetectionPayload, db: Session = Depends(get
             "alert_id": new_alert.id,
             "object_class": new_alert.object_class,
             "zone": new_alert.zone,
+            "zone_id": payload.zone_id or "ZONE_A",
+            "camera_id": resolved_cam,
             "thumbnail": new_alert.thumbnail,
             "lat": new_alert.lat,
             "lng": new_alert.lng,
@@ -339,26 +375,35 @@ async def receive_detection(payload: DetectionPayload, db: Session = Depends(get
         }
         await manager.broadcast(alert_data)
 
-        return {"status": "ALERT_CONFIRMED", "alert_id": new_alert.id, "reason": reason, "thumbnail": thumbnail_url}
+        return {
+            "status": "ALERT_CONFIRMED",
+            "alert_id": new_alert.id,
+            "camera_id": resolved_cam,
+            "reason": reason,
+            "thumbnail": thumbnail_url
+        }
 
     return {"status": "FILTERED", "reason": reason}
 
 @app.get("/alerts", response_model=List[AlertOut])
 def get_alerts(skip: int = 0, limit: int = 50, db: Session = Depends(get_db)):
     alerts = db.query(AlertLog).order_by(AlertLog.id.desc()).offset(skip).limit(limit).all()
-    return [
-        AlertOut(
+    out = []
+    for a in alerts:
+        z = db.query(Zone).filter((Zone.zone_id == a.zone) | (Zone.name == a.zone)).first()
+        out.append(AlertOut(
             alert_id=a.id,
             object_class=a.object_class,
             zone=a.zone,
+            camera_id=z.camera_id.lower() if z and z.camera_id else "cam-04",
             thumbnail=a.thumbnail,
             lat=a.lat,
             lng=a.lng,
             confidence=a.confidence,
             status=getattr(a, "status", "PENDING"),
             timestamp=a.timestamp.isoformat()
-        ) for a in alerts
-    ]
+        ))
+    return out
 
 @app.post("/dispatch", response_model=DispatchResponse)
 async def dispatch_unit(

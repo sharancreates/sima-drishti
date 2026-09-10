@@ -53,13 +53,13 @@ BACKEND_ENDPOINT = os.getenv("BACKEND_ENDPOINT", "http://127.0.0.1:8000/detectio
 API_KEY = os.getenv("API_KEY", "sima-drishti-secure-key-2026")
 STREAM_ENDPOINT = os.getenv("STREAM_ENDPOINT", "http://127.0.0.1:8000/stream/frame")
 
-TARGET_CLASSES = {0: "person", 2: "car", 7: "truck", 16: "dog"}
+TARGET_CLASSES = {0: "person", 1: "bicycle", 2: "car", 3: "motorcycle", 7: "truck", 16: "dog"}
 
 ZONE_COORDINATE_RATIOS = [
-    (0.15, 0.40),
-    (0.85, 0.40),
-    (0.95, 0.90),
-    (0.05, 0.90)
+    (0.08, 0.30),
+    (0.92, 0.30),
+    (0.96, 0.92),
+    (0.04, 0.92)
 ]
 
 # ----------------------------------------------------
@@ -131,14 +131,14 @@ network_thread.start()
 # ----------------------------------------------------
 # 3. HIGH-SPEED LOW-LIGHT MODULE (< 1ms execution)
 # ----------------------------------------------------
-def apply_clahe_enhancement(frame, brightness_threshold=85):
-    """Ultra-fast L-channel CLAHE enhancement without slow CPU bilateral filtering."""
+def apply_clahe_enhancement(frame, brightness_threshold=115):
+    """Ultra-fast L-channel CLAHE enhancement with adaptive contrast boost for dusk/low-light videos."""
     small = cv2.resize(frame, (64, 36), interpolation=cv2.INTER_NEAREST)
     gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
     if np.mean(gray) < brightness_threshold:
         lab = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB)
         l, a, b = cv2.split(lab)
-        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8))
         l_enhanced = clahe.apply(l)
         merged = cv2.merge((l_enhanced, a, b))
         return cv2.cvtColor(merged, cv2.COLOR_LAB2BGR), True
@@ -147,7 +147,7 @@ def apply_clahe_enhancement(frame, brightness_threshold=85):
 # ----------------------------------------------------
 # 4. SINGLE-CAMERA PIPELINE
 # ----------------------------------------------------
-def run_pipeline(source="1", camera_id="cam-04", conf_threshold=0.35, imgsz=640):
+def run_pipeline(source="1", camera_id="cam-04", conf_threshold=0.25, imgsz=640):
     camera_id = camera_id.lower()
     resolved_source = resolve_video_source(source)
     source_name = resolved_source if isinstance(resolved_source, str) else "Webcam (Device 0)"
@@ -222,11 +222,14 @@ def run_pipeline(source="1", camera_id="cam-04", conf_threshold=0.35, imgsz=640)
                 )
 
                 active_detections = []
-                if results[0].boxes and results[0].boxes.id is not None:
+                if results[0].boxes is not None and len(results[0].boxes) > 0:
                     boxes = results[0].boxes.xyxy.cpu().numpy()
                     confidences = results[0].boxes.conf.cpu().numpy()
                     class_ids = results[0].boxes.cls.cpu().numpy().astype(int)
-                    track_ids = results[0].boxes.id.cpu().numpy().astype(int)
+                    if results[0].boxes.id is not None:
+                        track_ids = results[0].boxes.id.cpu().numpy().astype(int)
+                    else:
+                        track_ids = [int(i + 1) for i in range(len(boxes))]
 
                     for bbox, conf, cls_id, track_id in zip(boxes, confidences, class_ids, track_ids):
                         x1, y1, x2, y2 = map(int, bbox)
@@ -240,13 +243,17 @@ def run_pipeline(source="1", camera_id="cam-04", conf_threshold=0.35, imgsz=640)
                                 _, buffer = cv2.imencode('.jpg', crop)
                                 frame_b64 = base64.b64encode(buffer).decode('utf-8')
 
+                        raw_class = TARGET_CLASSES.get(cls_id, "unknown")
+                        obj_label = "person" if raw_class in ("person", "bicycle", "motorcycle") else raw_class
+
                         payload = {
-                            "object_class": str(TARGET_CLASSES.get(cls_id, "unknown")),
+                            "object_class": obj_label,
                             "confidence": float(round(float(conf), 2)),
                             "bbox": [int(x1), int(y1), int(x2), int(y2)],
                             "track_id": int(track_id),
                             "in_zone": bool(in_zone),
                             "zone_id": assigned_zone,
+                            "camera_id": camera_id,
                             "frame_image": frame_b64,
                             "timestamp": int(time.time())
                         }
@@ -255,7 +262,7 @@ def run_pipeline(source="1", camera_id="cam-04", conf_threshold=0.35, imgsz=640)
                         except queue.Full:
                             pass
 
-                        active_detections.append((bbox, conf, cls_id, track_id, in_zone, payload["object_class"]))
+                        active_detections.append((bbox, conf, cls_id, track_id, in_zone, obj_label))
 
             # Render zone polygon and active bounding boxes
             cv2.polylines(frame, [poly_np], isClosed=True, color=(0, 0, 255), thickness=2)
@@ -314,7 +321,7 @@ ALL_CAMERAS_PLAN = [
         "name": "CAM-03 · RIVERINE WATCH",
         "source": VIDEO_PRESETS["3"],
         "zone_id": "ZONE_RIVERINE",
-        "zone_ratios": [(0.15, 0.35), (0.85, 0.35), (0.92, 0.85), (0.08, 0.85)],
+        "zone_ratios": [(0.05, 0.20), (0.95, 0.20), (0.98, 0.95), (0.02, 0.95)],
         "start_offset": 0
     },
     {
@@ -322,16 +329,16 @@ ALL_CAMERAS_PLAN = [
         "name": "CAM-01 · GATE ALPHA",
         "source": VIDEO_PRESETS["1"],
         "zone_id": "ZONE_GATEWAY",
-        "zone_ratios": [(0.20, 0.45), (0.80, 0.45), (0.88, 0.88), (0.12, 0.88)],
-        "start_offset": 85
+        "zone_ratios": [(0.12, 0.38), (0.88, 0.38), (0.95, 0.92), (0.05, 0.92)],
+        "start_offset": 0
     }
 ]
 
-def camera_stream_worker(cam_cfg, stop_event, imgsz=416, conf_threshold=0.35):
+def camera_stream_worker(cam_cfg, stop_event, imgsz=640, conf_threshold=0.25):
     """
     Dedicated worker per camera:
     - Runs independent YOLOv8 model instance with isolated ByteTrack state
-    - Paces inference every 3rd frame (~8-10 FPS) while rendering smooth ~25 FPS video
+    - Paces inference every 2nd frame for responsive tracking and smooth video
     - Pushes compressed stream frames to latest_camera_frames
     """
     cam_id = cam_cfg["cam_id"].lower()
@@ -363,7 +370,7 @@ def camera_stream_worker(cam_cfg, stop_event, imgsz=416, conf_threshold=0.35):
 
     frame_idx = 0
     active_detections = []
-    INFERENCE_INTERVAL = 3  # Run YOLO every 3rd frame to cut CPU load by 67%
+    INFERENCE_INTERVAL = 2  # Paced for high accuracy and smooth ~25 FPS
 
     while not stop_event.is_set() and cap.isOpened():
         ret, frame = cap.read()
@@ -391,11 +398,14 @@ def camera_stream_worker(cam_cfg, stop_event, imgsz=416, conf_threshold=0.35):
             )
 
             active_detections = []
-            if results[0].boxes and results[0].boxes.id is not None:
+            if results[0].boxes is not None and len(results[0].boxes) > 0:
                 boxes = results[0].boxes.xyxy.cpu().numpy()
                 confidences = results[0].boxes.conf.cpu().numpy()
                 class_ids = results[0].boxes.cls.cpu().numpy().astype(int)
-                track_ids = results[0].boxes.id.cpu().numpy().astype(int)
+                if results[0].boxes.id is not None:
+                    track_ids = results[0].boxes.id.cpu().numpy().astype(int)
+                else:
+                    track_ids = [int(i + 1) for i in range(len(boxes))]
 
                 for bbox, conf, cls_id, track_id in zip(boxes, confidences, class_ids, track_ids):
                     x1, y1, x2, y2 = map(int, bbox)
@@ -409,13 +419,17 @@ def camera_stream_worker(cam_cfg, stop_event, imgsz=416, conf_threshold=0.35):
                             _, buffer = cv2.imencode('.jpg', crop)
                             frame_b64 = base64.b64encode(buffer).decode('utf-8')
 
+                    raw_class = TARGET_CLASSES.get(cls_id, "unknown")
+                    obj_label = "person" if raw_class in ("person", "bicycle", "motorcycle") else raw_class
+
                     payload = {
-                        "object_class": str(TARGET_CLASSES.get(cls_id, "unknown")),
+                        "object_class": obj_label,
                         "confidence": float(round(float(conf), 2)),
                         "bbox": [int(x1), int(y1), int(x2), int(y2)],
                         "track_id": int(track_id),
                         "in_zone": bool(in_zone),
                         "zone_id": zone_id,
+                        "camera_id": cam_id,
                         "frame_image": frame_b64,
                         "timestamp": int(time.time())
                     }
@@ -424,7 +438,7 @@ def camera_stream_worker(cam_cfg, stop_event, imgsz=416, conf_threshold=0.35):
                     except queue.Full:
                         pass
 
-                    active_detections.append((bbox, conf, cls_id, track_id, in_zone, payload["object_class"]))
+                    active_detections.append((bbox, conf, cls_id, track_id, in_zone, obj_label))
 
         # Render bounding boxes and zone vector
         cv2.polylines(frame, [poly_np], isClosed=True, color=(0, 0, 255), thickness=2)
@@ -454,7 +468,7 @@ def camera_stream_worker(cam_cfg, stop_event, imgsz=416, conf_threshold=0.35):
 
     cap.release()
 
-def run_all_cameras(conf_threshold=0.35, imgsz=416):
+def run_all_cameras(conf_threshold=0.25, imgsz=640):
     print("==================================================")
     print("  SIMA-DRISHTI FULL MULTI-CAMERA SURVEILLANCE GRID")
     print("==================================================")
@@ -523,14 +537,14 @@ if __name__ == "__main__":
     parser.add_argument(
         "--conf",
         type=float,
-        default=0.35,
-        help="Detection confidence threshold (default: 0.35)"
+        default=0.25,
+        help="Detection confidence threshold (default: 0.25)"
     )
     parser.add_argument(
         "--imgsz",
         type=int,
-        default=416,
-        help="Inference image resolution (default: 416)"
+        default=640,
+        help="Inference image resolution (default: 640)"
     )
     args = parser.parse_args()
 

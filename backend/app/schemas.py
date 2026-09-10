@@ -23,12 +23,14 @@ class DetectionPayload(BaseModel):
     in_zone: bool
     timestamp: float
     zone_id: Optional[str] = "Sector_Alpha"
+    camera_id: Optional[str] = None
     frame_image: Optional[str] = None
 
 class AlertOut(BaseModel):
     alert_id: int
     object_class: str
     zone: str
+    camera_id: Optional[str] = None
     thumbnail: str
     lat: float
     lng: float

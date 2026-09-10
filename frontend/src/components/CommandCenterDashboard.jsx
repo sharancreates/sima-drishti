@@ -7,7 +7,7 @@ import {
   RefreshCw, Eye, Target, Compass, Thermometer
 } from 'lucide-react';
 
-const mockCameras = [
+const INITIAL_CAMERAS = [
   {
     id: 'cam-01',
     name: 'CAM-01 · GATE ALPHA',
@@ -19,8 +19,8 @@ const mockCameras = [
     resolution: '1080P · 30 FPS',
     videoSrc: '/videos/cam_02_fence_bravo.mp4',
     telemetry: { lat: 31.4385, lng: 74.3210, az: '042° NE', fov: '85°' },
-    tripwirePolygon: '20,45 80,45 88,88 12,88',
-    tripwirePoints: [[0.20, 0.45], [0.80, 0.45], [0.88, 0.88], [0.12, 0.88]],
+    tripwirePolygon: '12,38 88,38 95,92 5,92',
+    tripwirePoints: [[0.12, 0.38], [0.88, 0.38], [0.95, 0.92], [0.05, 0.92]],
     isAlert: false,
     detections: []
   },
@@ -38,20 +38,7 @@ const mockCameras = [
     tripwirePolygon: '10,48 90,48 95,92 5,92',
     tripwirePoints: [[0.10, 0.48], [0.90, 0.48], [0.95, 0.92], [0.05, 0.92]],
     isAlert: false,
-    detections: [
-      {
-        id: 'TRK-201',
-        class: 'vehicle',
-        label: 'Vehicle 87%',
-        confidence: 0.87,
-        bbox: { left: '16%', top: '44%', width: '135px', height: '85px' },
-        badge: 'LOITERING',
-        badgeColor: 'amber',
-        telemetry: 'ID: #V-104 · STATIONARY',
-        speed: '0.0 km/h',
-        isBreached: false
-      }
-    ]
+    detections: []
   },
   {
     id: 'cam-03',
@@ -64,15 +51,15 @@ const mockCameras = [
     resolution: '1080P · 28 FPS',
     videoSrc: '/videos/cam_04_north_perimeter.mp4',
     telemetry: { lat: 31.4421, lng: 74.3270, az: '280° WNW', fov: '110°' },
-    tripwirePolygon: '15,35 85,35 92,85 8,85',
-    tripwirePoints: [[0.15, 0.35], [0.85, 0.35], [0.92, 0.85], [0.08, 0.85]],
+    tripwirePolygon: '5,20 95,20 98,95 2,95',
+    tripwirePoints: [[0.05, 0.20], [0.95, 0.20], [0.98, 0.95], [0.02, 0.95]],
     isAlert: false,
     detections: []
   },
   {
     id: 'cam-04',
     name: 'CAM-04 · NORTH PERIMETER',
-    status: 'ALERT',
+    status: 'ONLINE',
     fps: 30,
     sector: 'SEC-4A',
     sectorName: 'SECTOR 4A · NORTH PERIMETER',
@@ -80,89 +67,22 @@ const mockCameras = [
     resolution: '4K · 30 FPS',
     videoSrc: '/videos/cam_04_north_perimeter.mp4',
     telemetry: { lat: 31.4392, lng: 74.3298, az: '015° NNE', fov: '120°' },
-    // Matches ZONE_COORDINATE_RATIOS = [(0.15, 0.40), (0.85, 0.40), (0.95, 0.90), (0.05, 0.90)]
     tripwirePolygon: '15,40 85,40 95,90 5,90',
     tripwirePoints: [[0.15, 0.40], [0.85, 0.40], [0.95, 0.90], [0.05, 0.90]],
-    isAlert: true,
-    detections: [
-      {
-        id: 'TRK-8092',
-        class: 'person',
-        label: 'Person 94%',
-        confidence: 0.94,
-        bbox: { right: '22%', top: '46%', width: '105px', height: '190px' },
-        badge: 'BREACH',
-        badgeColor: 'red',
-        telemetry: 'ID: #T-8092 · 1.4 m/s',
-        speed: '1.4 m/s',
-        isBreached: true
-      },
-      {
-        id: 'TRK-104',
-        class: 'vehicle',
-        label: 'Vehicle 87%',
-        confidence: 0.87,
-        bbox: { right: '35%', top: '44%', width: '90px', height: '60px' },
-        badge: 'BUFFER ZONE',
-        badgeColor: 'blue',
-        telemetry: 'ID: #V-104 · STATIONARY',
-        speed: '0.0 km/h',
-        isBreached: false
-      }
-    ]
-  }
-];
-
-const mockAlerts = [
-  {
-    id: 'EV-8842',
-    title: 'TRIPWIRE BREACH DETECTED',
-    sector: 'SECTOR 4A // NORTH POST',
-    zone: 'Sector_North_4A',
-    time: '06:24:12 UTC',
-    severity: 'critical',
-    target: 'Person (Armed) 94%',
-    object_class: 'person',
-    confidence: 0.94,
-    lat: 31.4392,
-    lng: 74.3298,
-    desc: 'Target crossed physical boundary tripwire vector #4. Heading South-East at 1.4m/s.',
-    image: '/videos/cam_04_north_perimeter.mp4'
-  },
-  {
-    id: 'EV-8839',
-    title: 'VEHICLE PROXIMITY LOITERING',
-    sector: 'SECTOR 2B // SERVICE ROAD',
-    zone: 'Sector_Fence_Bravo',
-    time: '06:19:40 UTC',
-    severity: 'warning',
-    target: 'Vehicle 87%',
-    object_class: 'vehicle',
-    confidence: 0.87,
-    lat: 31.4398,
-    lng: 74.3245,
-    desc: 'Stationary pickup truck in restricted buffer zone exceeding 3 minutes dwell time.',
-    image: '/videos/cam_02_fence_bravo.mp4'
-  },
-  {
-    id: 'EV-8821',
-    title: 'THERMAL FLIR HEAT SIGNATURE',
-    sector: 'SECTOR 1C // DENSE BRUSH',
-    zone: 'Sector_Brush_1C',
-    time: '05:58:11 UTC',
-    severity: 'caution',
-    target: 'Biological Cluster',
-    object_class: 'person',
-    confidence: 0.78,
-    lat: 31.4385,
-    lng: 74.3210,
-    desc: 'Infrared FLIR detection: clustered heat signatures 120m from international border.',
-    image: '/videos/cam_04_north_perimeter.mp4'
+    isAlert: false,
+    detections: []
   }
 ];
 
 const BACKEND_URL = "http://127.0.0.1:8000";
 const WS_URL = "ws://127.0.0.1:8000/ws/alerts";
+
+const ZONE_CAM_MAP = {
+  'zone_gateway': 'cam-01',
+  'zone_bravo': 'cam-02',
+  'zone_riverine': 'cam-03',
+  'zone_a': 'cam-04'
+};
 
 function normalizeBackendAlert(data) {
   const isPerson = (data.object_class || '').toLowerCase() === 'person';
@@ -178,12 +98,19 @@ function normalizeBackendAlert(data) {
     ? (data.thumbnail.startsWith('http') ? data.thumbnail : `${BACKEND_URL}${data.thumbnail}`)
     : (data.image || '/videos/cam_04_north_perimeter.mp4');
 
+  const resolvedCam = (
+    data.camera_id || 
+    ZONE_CAM_MAP[(data.zone_id || data.zone || '').toLowerCase()] || 
+    'cam-04'
+  ).toLowerCase();
+
   return {
     id: data.alert_id ? `EV-${data.alert_id}` : (data.id || `EV-${Math.floor(Math.random() * 9000 + 1000)}`),
     alert_id: data.alert_id || data.id,
+    camera_id: resolvedCam,
     title: data.title || (isPerson ? 'TRIPWIRE BREACH DETECTED' : `${displayClass.toUpperCase()} PERIMETER ALERT`),
     sector: data.zone ? `${data.zone.toUpperCase()} // SECTOR` : (data.sector || 'SECTOR 04-NORTH'),
-    zone: data.zone || data.sector || 'Sector_Alpha',
+    zone: data.zone || data.sector || 'ZONE_A',
     time: timeStr,
     timestamp: data.timestamp || new Date().toISOString(),
     severity: data.severity || (isPerson ? 'critical' : 'warning'),
@@ -200,18 +127,19 @@ function normalizeBackendAlert(data) {
 }
 
 export default function CommandCenterDashboard({ onSelectAlert }) {
-  const [activeCam, setActiveCam] = useState('cam-04');
+  const [cameras, setCameras] = useState(INITIAL_CAMERAS);
+  const [activeCam, setActiveCam] = useState('cam-01');
   const [viewMode, setViewMode] = useState('optical'); // optical, thermal, night
   const [zoomLevel, setZoomLevel] = useState(1);
-  const [clock, setClock] = useState('06:24:18 UTC');
-  const [date, setDate] = useState('2026-03-29');
+  const [clock, setClock] = useState(() => new Date().toISOString().substring(11, 19) + ' UTC');
+  const [date, setDate] = useState(() => new Date().toISOString().substring(0, 10));
   const videoRef = useRef(null);
 
   // Active camera model
-  const currentCam = mockCameras.find(c => c.id === activeCam) || mockCameras[3];
+  const currentCam = cameras.find(c => c.id.toLowerCase() === activeCam.toLowerCase()) || cameras[0];
 
   // Real-time dynamic state
-  const [alerts, setAlerts] = useState(mockAlerts);
+  const [alerts, setAlerts] = useState([]);
   const [connectionStatus, setConnectionStatus] = useState('connecting'); // 'connected' | 'connecting' | 'offline'
   const [backendStats, setBackendStats] = useState({
     total_alerts: 0,
@@ -301,9 +229,10 @@ export default function CommandCenterDashboard({ onSelectAlert }) {
 
     const fetchInitialData = async () => {
       try {
-        const [alertsRes, analyticsRes] = await Promise.allSettled([
-          fetch(`${BACKEND_URL}/alerts?limit=25`),
-          fetch(`${BACKEND_URL}/analytics`)
+        const [alertsRes, analyticsRes, camerasRes] = await Promise.allSettled([
+          fetch(`${BACKEND_URL}/alerts?limit=50`),
+          fetch(`${BACKEND_URL}/analytics`),
+          fetch(`${BACKEND_URL}/cameras`)
         ]);
 
         if (!isMounted) return;
@@ -315,17 +244,23 @@ export default function CommandCenterDashboard({ onSelectAlert }) {
 
         if (alertsRes.status === 'fulfilled' && alertsRes.value.ok) {
           const dbAlerts = await alertsRes.value.json();
-          if (Array.isArray(dbAlerts) && dbAlerts.length > 0) {
+          if (Array.isArray(dbAlerts)) {
             const normalized = dbAlerts.map(normalizeBackendAlert);
-            setAlerts(prev => {
-              const ids = new Set(normalized.map(a => a.id));
-              const nonDuplicateDefaults = prev.filter(a => !ids.has(a.id));
-              return [...normalized, ...nonDuplicateDefaults];
-            });
+            setAlerts(normalized);
+          }
+        }
+
+        if (camerasRes.status === 'fulfilled' && camerasRes.value.ok) {
+          const backendCams = await camerasRes.value.json();
+          if (Array.isArray(backendCams)) {
+            setCameras(prev => prev.map(c => {
+              const match = backendCams.find(bc => bc.id.toLowerCase() === c.id.toLowerCase());
+              return match ? { ...c, status: match.status || 'ONLINE', isAlert: match.status === 'ALERT' } : c;
+            }));
           }
         }
       } catch (err) {
-        console.warn('[NOC Telemetry] Backend REST service offline, operating in simulation mode:', err);
+        console.warn('[NOC Telemetry] Backend REST service offline, operating in standby:', err);
       }
     };
 
@@ -354,12 +289,23 @@ export default function CommandCenterDashboard({ onSelectAlert }) {
             // Trigger tactical audio chime on intrusion
             playTacticalBeep(980, 0.35);
 
-            setAlerts(prev => [liveAlert, ...prev.slice(0, 49)]);
+            setAlerts(prev => [liveAlert, ...prev.filter(a => a.id !== liveAlert.id).slice(0, 49)]);
             setBackendStats(prev => ({
               ...prev,
               total_alerts: (prev.total_alerts || 0) + 1,
               alerts_last_24h: (prev.alerts_last_24h || 0) + 1
             }));
+
+            // Dynamically mark alerting camera as ALERT
+            const targetCamId = (liveAlert.camera_id || '').toLowerCase();
+            if (targetCamId) {
+              setCameras(prev => prev.map(cam => {
+                if (cam.id.toLowerCase() === targetCamId) {
+                  return { ...cam, status: 'ALERT', isAlert: true };
+                }
+                return cam;
+              }));
+            }
           } catch (e) {
             console.error('[NOC WebSocket] Failed parsing alert broadcast:', e);
           }
@@ -825,10 +771,17 @@ export default function CommandCenterDashboard({ onSelectAlert }) {
 
               <button
                 onClick={() => {
-                  playTacticalBeep(940, 0.2);
-                  onSelectAlert(alerts[0]);
+                  if (alerts.length > 0) {
+                    playTacticalBeep(940, 0.2);
+                    onSelectAlert(alerts[0]);
+                  }
                 }}
-                className="px-3 py-1 bg-red-600/90 hover:bg-red-500 text-white text-xs font-mono font-bold rounded border border-red-500/50 flex items-center gap-1.5 shadow-[0_0_10px_rgba(239,68,68,0.4)] transition"
+                disabled={alerts.length === 0}
+                className={`px-3 py-1 text-xs font-mono font-bold rounded border flex items-center gap-1.5 transition ${
+                  alerts.length > 0
+                    ? 'bg-red-600/90 hover:bg-red-500 text-white border-red-500/50 shadow-[0_0_10px_rgba(239,68,68,0.4)] cursor-pointer'
+                    : 'bg-slate-800 text-slate-500 border-slate-700 cursor-not-allowed opacity-60'
+                }`}
               >
                 <AlertTriangle className="w-3.5 h-3.5" />
                 DISPATCH MODAL
@@ -838,7 +791,7 @@ export default function CommandCenterDashboard({ onSelectAlert }) {
 
           {/* Mini-camera Selector Grid */}
           <div className="h-16 bg-[#0B1120] border-t border-slate-800 px-3 py-2 grid grid-cols-4 gap-2 shrink-0">
-            {mockCameras.map(cam => (
+            {cameras.map(cam => (
               <button
                 key={cam.id}
                 onClick={() => handleSelectCamera(cam.id)}
@@ -899,64 +852,78 @@ export default function CommandCenterDashboard({ onSelectAlert }) {
 
           {/* Alerts List */}
           <div className="flex-1 overflow-y-auto p-3 space-y-3">
-            {alerts.map(alert => (
-              <div
-                key={alert.id}
-                onClick={() => onSelectAlert(alert)}
-                className={`p-3 rounded-lg border transition cursor-pointer flex flex-col gap-2 ${
-                  alert.severity === 'critical'
-                    ? 'bg-red-950/40 border-red-500/70 hover:border-red-400 shadow-[0_0_15px_rgba(239,68,68,0.2)]'
-                    : alert.severity === 'warning'
-                    ? 'bg-amber-950/30 border-amber-500/50 hover:border-amber-400'
-                    : 'bg-slate-900/60 border-slate-700/70 hover:border-slate-600'
-                }`}
-              >
-                {/* Alert Top */}
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className={`w-2 h-2 rounded-full ${
-                      alert.severity === 'critical' ? 'bg-red-500 animate-ping' : 'bg-amber-400'
-                    }`}></span>
-                    <span className="font-mono text-xs font-bold text-white tracking-wider">
-                      {alert.title}
-                    </span>
-                    {alert.isLive && (
-                      <span className="text-[8px] font-mono px-1.5 py-0.5 rounded bg-red-600 text-white font-bold tracking-wider animate-pulse">
-                        LIVE BREACH
-                      </span>
-                    )}
-                  </div>
-                  <span className="text-[10px] font-mono text-slate-400">{alert.time}</span>
-                </div>
-
-                {/* Details */}
-                <div className="text-[11px] font-mono text-slate-300">
-                  <span className="text-slate-400">Target:</span>{' '}
-                  <span className="font-bold text-white">{alert.target}</span>
-                </div>
-
-                <p className="text-xs text-slate-400 leading-snug">
-                  {alert.desc}
-                </p>
-
-                {/* Footer buttons */}
-                <div className="flex items-center justify-between pt-2 border-t border-slate-800/80 mt-1">
-                  <span className="text-[10px] font-mono text-blue-400 font-semibold">
-                    {alert.sector}
-                  </span>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onSelectAlert(alert);
-                    }}
-                    className="px-2.5 py-1 bg-red-600 hover:bg-red-500 text-white font-mono text-[10px] font-bold rounded flex items-center gap-1 transition shadow-sm"
-                  >
-                    <span>INSPECT & DISPATCH</span>
-                    <ChevronRight className="w-3 h-3" />
-                  </button>
+            {alerts.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-72 text-center p-6 border border-dashed border-slate-800 rounded-lg text-slate-500 font-mono space-y-3">
+                <ShieldCheck className="w-10 h-10 text-emerald-500/50 animate-pulse" />
+                <div className="text-xs font-bold text-slate-300 tracking-wider">ALL SECTORS SECURE</div>
+                <div className="text-[10px] text-slate-500 leading-relaxed max-w-[240px]">
+                  Autonomous AI tripwire tracking active across all channels. No boundary breaches detected.
                 </div>
               </div>
-            ))}
+            ) : (
+              alerts.map(alert => (
+                <div
+                  key={alert.id}
+                  onClick={() => {
+                    if (alert.camera_id) handleSelectCamera(alert.camera_id);
+                    onSelectAlert(alert);
+                  }}
+                  className={`p-3 rounded-lg border transition cursor-pointer flex flex-col gap-2 ${
+                    alert.severity === 'critical'
+                      ? 'bg-red-950/40 border-red-500/70 hover:border-red-400 shadow-[0_0_15px_rgba(239,68,68,0.2)]'
+                      : alert.severity === 'warning'
+                      ? 'bg-amber-950/30 border-amber-500/50 hover:border-amber-400'
+                      : 'bg-slate-900/60 border-slate-700/70 hover:border-slate-600'
+                  }`}
+                >
+                  {/* Alert Top */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className={`w-2 h-2 rounded-full ${
+                        alert.severity === 'critical' ? 'bg-red-500 animate-ping' : 'bg-amber-400'
+                      }`}></span>
+                      <span className="font-mono text-xs font-bold text-white tracking-wider">
+                        {alert.title}
+                      </span>
+                      {alert.isLive && (
+                        <span className="text-[8px] font-mono px-1.5 py-0.5 rounded bg-red-600 text-white font-bold tracking-wider animate-pulse">
+                          LIVE BREACH
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-[10px] font-mono text-slate-400">{alert.time}</span>
+                  </div>
+
+                  {/* Details */}
+                  <div className="text-[11px] font-mono text-slate-300">
+                    <span className="text-slate-400">Target:</span>{' '}
+                    <span className="font-bold text-white">{alert.target}</span>
+                  </div>
+
+                  <p className="text-xs text-slate-400 leading-snug">
+                    {alert.desc}
+                  </p>
+
+                  {/* Footer buttons */}
+                  <div className="flex items-center justify-between pt-2 border-t border-slate-800/80 mt-1">
+                    <span className="text-[10px] font-mono text-blue-400 font-semibold">
+                      {alert.sector}
+                    </span>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (alert.camera_id) handleSelectCamera(alert.camera_id);
+                        onSelectAlert(alert);
+                      }}
+                      className="px-2.5 py-1 bg-red-600 hover:bg-red-500 text-white font-mono text-[10px] font-bold rounded flex items-center gap-1 transition shadow-sm"
+                    >
+                      <span>INSPECT & DISPATCH</span>
+                      <ChevronRight className="w-3 h-3" />
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
 
             {/* Tactical Sector Map Mini-card synchronized with current camera */}
             <div className="p-3 bg-[#0B1120] border border-slate-800 rounded-lg space-y-2">

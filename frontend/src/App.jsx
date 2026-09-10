@@ -9,16 +9,7 @@ export default function App() {
   const [selectedAlert, setSelectedAlert] = useState(null);
   const [isDevSwitcherOpen, setIsDevSwitcherOpen] = useState(false);
 
-  const sampleAlert = {
-    id: 'EV-8842',
-    title: 'TRIPWIRE BREACH DETECTED',
-    sector: 'SECTOR 4A // NORTH POST',
-    time: '06:24:12 UTC',
-    severity: 'critical',
-    target: 'Person (Armed) 94%',
-    desc: 'Target crossed physical boundary tripwire vector #4. Heading South-East at 1.4m/s.',
-    image: '/videos/cam_04_north_perimeter.mp4'
-  };
+
 
   // Keyboard shortcut listener (` to toggle, Escape to close)
   useEffect(() => {
@@ -81,9 +72,36 @@ export default function App() {
             2. Dashboard
           </button>
           <button
-            onClick={() => {
+            onClick={async () => {
               setCurrentView('dashboard');
-              setSelectedAlert(sampleAlert);
+              if (!selectedAlert) {
+                try {
+                  const res = await fetch('http://127.0.0.1:8000/alerts?limit=1');
+                  if (res.ok) {
+                    const data = await res.json();
+                    if (Array.isArray(data) && data.length > 0) {
+                      const a = data[0];
+                      setSelectedAlert({
+                        id: a.alert_id ? `EV-${a.alert_id}` : 'EV-LIVE',
+                        alert_id: a.alert_id,
+                        title: `${a.object_class.toUpperCase()} PERIMETER ALERT`,
+                        sector: a.zone || 'SECTOR 04-NORTH',
+                        time: a.timestamp ? new Date(a.timestamp).toISOString().substring(11, 19) + ' UTC' : 'NOW',
+                        severity: a.object_class === 'person' ? 'critical' : 'warning',
+                        target: `${a.object_class.toUpperCase()} ${Math.round((a.confidence || 0.9) * 100)}%`,
+                        object_class: a.object_class,
+                        confidence: a.confidence,
+                        lat: a.lat,
+                        lng: a.lng,
+                        image: a.thumbnail ? (a.thumbnail.startsWith('http') ? a.thumbnail : `http://127.0.0.1:8000${a.thumbnail}`) : '/videos/cam_04_north_perimeter.mp4',
+                        desc: `Active tactical breach in ${a.zone}. Target: ${a.object_class}.`
+                      });
+                    }
+                  }
+                } catch {
+                  // Fallback
+                }
+              }
             }}
             className={`px-2 py-1 text-xs font-mono rounded flex items-center gap-1.5 transition ${
               selectedAlert
