@@ -4,7 +4,7 @@ import {
   AlertTriangle, SignalHigh, Wifi, Zap, UserX, Truck, Crosshair, 
   Camera, Maximize2, ZoomIn, ZoomOut, Flame, Moon, Sun, 
   MapPin, Radio, Activity, ChevronRight, Layers, BellRing, 
-  RefreshCw, Eye, Target, Compass, Thermometer
+  RefreshCw, Eye, Target, Compass, Thermometer, Trash2, Film, Search, X, Play, Check
 } from 'lucide-react';
 
 const INITIAL_CAMERAS = [
@@ -17,7 +17,7 @@ const INITIAL_CAMERAS = [
     sectorName: 'SECTOR 1A · GATEWAY ALPHA',
     rtspUrl: 'rtsp://192.168.1.101:554/ch01/main',
     resolution: '1080P · 30 FPS',
-    videoSrc: '/videos/cam_02_fence_bravo.mp4',
+    videoSrc: '/videos/Figure_crawling_near_border_fence_202608292307.mp4',
     telemetry: { lat: 31.4385, lng: 74.3210, az: '042° NE', fov: '85°' },
     tripwirePolygon: '12,38 88,38 95,92 5,92',
     tripwirePoints: [[0.12, 0.38], [0.88, 0.38], [0.95, 0.92], [0.05, 0.92]],
@@ -33,7 +33,7 @@ const INITIAL_CAMERAS = [
     sectorName: 'SECTOR 2B · FENCE PERIMETER BRAVO',
     rtspUrl: 'rtsp://192.168.2.102:554/ch01/main',
     resolution: '2K · 30 FPS',
-    videoSrc: '/videos/cam_02_fence_bravo.mp4',
+    videoSrc: '/videos/Stray_dog_crosses_border_fence_202608292240.mp4',
     telemetry: { lat: 31.4398, lng: 74.3245, az: '118° ESE', fov: '92°' },
     tripwirePolygon: '10,48 90,48 95,92 5,92',
     tripwirePoints: [[0.10, 0.48], [0.90, 0.48], [0.95, 0.92], [0.05, 0.92]],
@@ -49,7 +49,7 @@ const INITIAL_CAMERAS = [
     sectorName: 'SECTOR 3C · RIVERINE EMBANKMENT',
     rtspUrl: 'rtsp://192.168.3.103:554/ch01/main',
     resolution: '1080P · 28 FPS',
-    videoSrc: '/videos/cam_04_north_perimeter.mp4',
+    videoSrc: '/videos/Figure_walking_near_border_river_202608292310.mp4',
     telemetry: { lat: 31.4421, lng: 74.3270, az: '280° WNW', fov: '110°' },
     tripwirePolygon: '5,20 95,20 98,95 2,95',
     tripwirePoints: [[0.05, 0.20], [0.95, 0.20], [0.98, 0.95], [0.02, 0.95]],
@@ -65,12 +65,187 @@ const INITIAL_CAMERAS = [
     sectorName: 'SECTOR 4A · NORTH PERIMETER',
     rtspUrl: 'rtsp://192.168.4.108:554/live',
     resolution: '4K · 30 FPS',
-    videoSrc: '/videos/cam_04_north_perimeter.mp4',
+    videoSrc: '/videos/Person_creeps_toward_border_line_202608292252.mp4',
     telemetry: { lat: 31.4392, lng: 74.3298, az: '015° NNE', fov: '120°' },
     tripwirePolygon: '15,40 85,40 95,90 5,90',
     tripwirePoints: [[0.15, 0.40], [0.85, 0.40], [0.95, 0.90], [0.05, 0.90]],
     isAlert: false,
     detections: []
+  }
+];
+
+// Complete repository of all 21 tactical border surveillance video feeds from ai_engine/media
+const ALL_MEDIA_VIDEOS = [
+  {
+    id: 'vid-crawl-1',
+    filename: 'Figure_crawling_near_border_fence_202608292307.mp4',
+    title: 'Fence Low-Crawl Infiltration',
+    category: 'INTRUSION',
+    badge: '🚨 Tactical Intrusion',
+    desc: 'Target crawling on belly beneath concertina wire at boundary line.',
+    url: '/videos/Figure_crawling_near_border_fence_202608292307.mp4'
+  },
+  {
+    id: 'vid-river',
+    filename: 'Figure_walking_near_border_river_202608292310.mp4',
+    title: 'Riverine Sector Intrusion',
+    category: 'RIVERINE',
+    badge: '🌊 Riverine Infiltration',
+    desc: 'Subject walking along riverbank marsh crossing vector in sector 3.',
+    url: '/videos/Figure_walking_near_border_river_202608292310.mp4'
+  },
+  {
+    id: 'vid-creep',
+    filename: 'Person_creeps_toward_border_line_202608292252.mp4',
+    title: 'Boundary Creep Maneuver',
+    category: 'INTRUSION',
+    badge: '🚨 Tactical Intrusion',
+    desc: 'Target stalking toward the border line utilizing ground terrain mask.',
+    url: '/videos/Person_creeps_toward_border_line_202608292252.mp4'
+  },
+  {
+    id: 'vid-track',
+    filename: 'Figure_walking_along_border_track_202608292308.mp4',
+    title: 'Perimeter Patrol Track Walker',
+    category: 'INTRUSION',
+    badge: '🚨 Tactical Intrusion',
+    desc: 'Pedestrian detected pacing along boundary track security vector.',
+    url: '/videos/Figure_walking_along_border_track_202608292308.mp4'
+  },
+  {
+    id: 'vid-muddy',
+    filename: 'Figure_walking_on_muddy_track_202608292308.mp4',
+    title: 'Muddy Trail Advance',
+    category: 'INTRUSION',
+    badge: '🚨 Tactical Intrusion',
+    desc: 'Subject navigating wet mud embankment near tactical border fence.',
+    url: '/videos/Figure_walking_on_muddy_track_202608292308.mp4'
+  },
+  {
+    id: 'vid-patrol-veh',
+    filename: 'Patrol_vehicle_driving_along_bou._202608292231.mp4',
+    title: 'Border Patrol Recon Vehicle',
+    category: 'VEHICLE',
+    badge: '🚗 Patrol Vehicle',
+    desc: 'Authorized border security vehicle patrolling along boundary vector.',
+    url: '/videos/Patrol_vehicle_driving_along_bou._202608292231.mp4'
+  },
+  {
+    id: 'vid-snow-1',
+    filename: 'Person_walking_snow_mountain_pass_202608292246.mp4',
+    title: 'Alpine Pass Reconnaissance',
+    category: 'SNOW_PASS',
+    badge: '🏔️ Mountain Pass',
+    desc: 'Foot traveler negotiating high-altitude snow mountain border crossing.',
+    url: '/videos/Person_walking_snow_mountain_pass_202608292246.mp4'
+  },
+  {
+    id: 'vid-snow-2',
+    filename: 'Person_trudges_through_snowy_pass_202608292259.mp4',
+    title: 'Snowy Pass Trudge',
+    category: 'SNOW_PASS',
+    badge: '🏔️ Mountain Pass',
+    desc: 'Infiltrator traversing deep snow drifts along alpine ridge line.',
+    url: '/videos/Person_trudges_through_snowy_pass_202608292259.mp4'
+  },
+  {
+    id: 'vid-snow-3',
+    filename: 'Figure_moving_through_snowy_moun._202608292303.mp4',
+    title: 'Snow Mountain Ridge Traverse',
+    category: 'SNOW_PASS',
+    badge: '🏔️ Mountain Pass',
+    desc: 'Distant figure moving through snowy mountain pass terrain.',
+    url: '/videos/Figure_moving_through_snowy_moun._202608292303.mp4'
+  },
+  {
+    id: 'vid-mtn-fence',
+    filename: 'Person_walking_near_mountain_fence_202608292301.mp4',
+    title: 'Mountain Fence Line Movement',
+    category: 'SNOW_PASS',
+    badge: '🏔️ Mountain Pass',
+    desc: 'Individual walking parallel to highland boundary fence corridor.',
+    url: '/videos/Person_walking_near_mountain_fence_202608292301.mp4'
+  },
+  {
+    id: 'vid-mtn-dist',
+    filename: 'Distant_figure_moving_on_mountai._202608292304.mp4',
+    title: 'Distant Mountain Figure',
+    category: 'SNOW_PASS',
+    badge: '🏔️ Mountain Pass',
+    desc: 'Long-range optical observation of silhouette traversing high mountain line.',
+    url: '/videos/Distant_figure_moving_on_mountai._202608292304.mp4'
+  },
+  {
+    id: 'vid-dog-1',
+    filename: 'Stray_dog_crosses_border_fence_202608292240.mp4',
+    title: 'Canine Fence Cross (Filter Test)',
+    category: 'ANIMAL',
+    badge: '🐾 Wildlife Filter',
+    desc: 'Stray dog passing fence barrier. Validates AI false-alarm suppression.',
+    url: '/videos/Stray_dog_crosses_border_fence_202608292240.mp4'
+  },
+  {
+    id: 'vid-dog-2',
+    filename: 'Stray_dog_walking_along_fence_20260910201857.mp4',
+    title: 'Canine Perimeter Movement',
+    category: 'ANIMAL',
+    badge: '🐾 Wildlife Filter',
+    desc: 'Animal walking along perimeter fence without triggering human breach.',
+    url: '/videos/Stray_dog_walking_along_fence_20260910201857.mp4'
+  },
+  {
+    id: 'vid-wind-1',
+    filename: 'Wind_blowing_over_empty_path_202608292253.mp4',
+    title: 'Empty Perimeter Dust Wind',
+    category: 'ENVIRONMENTAL',
+    badge: '💨 Environmental Wind',
+    desc: 'High wind blowing across empty corridor. Negative control verification.',
+    url: '/videos/Wind_blowing_over_empty_path_202608292253.mp4'
+  },
+  {
+    id: 'vid-wind-2',
+    filename: 'Wind_blows_grass_near_fence_202608292236.mp4',
+    title: 'Wind Foliage Motion',
+    category: 'ENVIRONMENTAL',
+    badge: '💨 Environmental Wind',
+    desc: 'Oscillating tall grass in perimeter field. Tests false motion filtering.',
+    url: '/videos/Wind_blows_grass_near_fence_202608292236.mp4'
+  },
+  {
+    id: 'vid-cctv',
+    filename: 'Security_camera_viewing_border_f._20260910201920.mp4',
+    title: 'Static Border Fence CCTV',
+    category: 'INTRUSION',
+    badge: '🚨 Tactical Intrusion',
+    desc: 'High-mount optical CCTV monitor staring down long fence perimeter.',
+    url: '/videos/Security_camera_viewing_border_f._20260910201920.mp4'
+  },
+  {
+    id: 'vid-dusk',
+    filename: 'Figure_approaches_border_fence_d._20260910201805.mp4',
+    title: 'Dusk Fence Approach',
+    category: 'INTRUSION',
+    badge: '🚨 Tactical Intrusion',
+    desc: 'Subject approaching fence line under twilight low-light conditions.',
+    url: '/videos/Figure_approaches_border_fence_d._20260910201805.mp4'
+  },
+  {
+    id: 'vid-wa-1',
+    filename: 'WhatsApp Video 2026-08-29 at 11.14.59 PM.mp4',
+    title: 'Tactical Perimeter Intrusion Alpha',
+    category: 'INTRUSION',
+    badge: '🚨 Tactical Intrusion',
+    desc: 'Human subject crossing perimeter fence vector under low-light surveillance.',
+    url: '/videos/WhatsApp Video 2026-08-29 at 11.14.59 PM.mp4'
+  },
+  {
+    id: 'vid-wa-2',
+    filename: 'WhatsApp Video 2026-09-01 at 8.10.04 PM.mp4',
+    title: 'Tactical Perimeter Intrusion Bravo',
+    category: 'INTRUSION',
+    badge: '🚨 Tactical Intrusion',
+    desc: 'Active intrusion vector with high-accuracy AI bounding box track.',
+    url: '/videos/WhatsApp Video 2026-09-01 at 8.10.04 PM.mp4'
   }
 ];
 
@@ -149,6 +324,54 @@ export default function CommandCenterDashboard({ onSelectAlert }) {
   });
   const [alarmActive, setAlarmActive] = useState(false);
   const [streamInfo, setStreamInfo] = useState({ is_streaming: false, active_cam: 'cam-04', active_cams: [] });
+
+  // Tactical Video Repository state
+  const [videoLibraryOpen, setVideoLibraryOpen] = useState(false);
+  const [availableVideos, setAvailableVideos] = useState(ALL_MEDIA_VIDEOS);
+  const [videoCategoryFilter, setVideoCategoryFilter] = useState('ALL');
+  const [videoSearchQuery, setVideoSearchQuery] = useState('');
+
+  // Active breached screens metric (out of the 4 screens)
+  const activeBreachedScreens = cameras.filter(c => c.status === 'ALERT' || c.isAlert).length;
+
+  // Clear alert history from SQLite database and reset camera statuses
+  const handleClearAlerts = async () => {
+    try {
+      const res = await fetch(`${BACKEND_URL}/alerts`, { method: 'DELETE' });
+      if (res.ok) {
+        setAlerts([]);
+        setCameras(prev => prev.map(c => ({ ...c, status: 'ONLINE', isAlert: false })));
+        setBackendStats(prev => ({ ...prev, total_alerts: 0, alerts_last_24h: 0 }));
+      }
+    } catch (e) {
+      console.warn("Failed to clear alerts from backend:", e);
+      setAlerts([]);
+      setCameras(prev => prev.map(c => ({ ...c, status: 'ONLINE', isAlert: false })));
+    }
+  };
+
+  // Deploy any of the 21 videos from ai_engine/media to any camera
+  const handleAssignVideoToCam = (camId, videoUrl) => {
+    setCameras(prev => prev.map(c => {
+      if (c.id.toLowerCase() === camId.toLowerCase()) {
+        return { ...c, videoSrc: videoUrl };
+      }
+      return c;
+    }));
+    setVideoLibraryOpen(false);
+  };
+
+  // Fetch dynamic videos catalog from backend if available
+  useEffect(() => {
+    fetch(`${BACKEND_URL}/videos`)
+      .then(res => res.ok ? res.json() : [])
+      .then(data => {
+        if (Array.isArray(data) && data.length > 0) {
+          setAvailableVideos(data);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   // Poll backend for live AI stream availability and active cameras
   useEffect(() => {
@@ -284,6 +507,14 @@ export default function CommandCenterDashboard({ onSelectAlert }) {
           try {
             const payload = JSON.parse(event.data);
             console.log('[NOC WebSocket] Breach event broadcast received:', payload);
+            
+            if (payload.event_type === 'ALERTS_CLEARED') {
+              setAlerts([]);
+              setCameras(prev => prev.map(c => ({ ...c, status: 'ONLINE', isAlert: false })));
+              setBackendStats(prev => ({ ...prev, total_alerts: 0, alerts_last_24h: 0 }));
+              return;
+            }
+
             const liveAlert = normalizeBackendAlert({ ...payload, isLive: true });
             
             // Trigger tactical audio chime on intrusion
@@ -747,6 +978,17 @@ export default function CommandCenterDashboard({ onSelectAlert }) {
                 <Moon className="w-3.5 h-3.5" />
                 <span>NIGHT IR</span>
               </button>
+
+              <div className="h-4 w-px bg-slate-700 mx-1"></div>
+
+              <button
+                onClick={() => setVideoLibraryOpen(true)}
+                className="px-2.5 py-1 rounded flex items-center gap-1.5 transition bg-indigo-950 hover:bg-indigo-900/90 border border-indigo-500/60 text-indigo-300 hover:text-indigo-100 font-bold shadow"
+                title="Browse and deploy all 21 surveillance videos from ai_engine/media"
+              >
+                <Film className="w-3.5 h-3.5 text-indigo-400" />
+                <span>ALL VIDEOS ({availableVideos.length || 21})</span>
+              </button>
             </div>
 
             {/* PTZ Zoom & Quick Dispatch */}
@@ -832,16 +1074,36 @@ export default function CommandCenterDashboard({ onSelectAlert }) {
         <section className="col-span-12 lg:col-span-5 xl:col-span-4 flex flex-col bg-[#131E35] border border-slate-700/80 rounded-lg overflow-hidden shadow-xl">
           
           {/* Header */}
-          <div className="h-10 bg-slate-900/90 border-b border-slate-700/80 px-3 flex items-center justify-between shrink-0">
+          <div className="h-12 bg-slate-900/95 border-b border-slate-700/80 px-3 flex items-center justify-between shrink-0">
             <div className="flex items-center gap-2 text-xs font-mono font-bold text-slate-200">
-              <BellRing className="w-4 h-4 text-red-400 animate-bounce" />
-              <span>LIVE INCIDENT & THREAT FEED</span>
+              <BellRing className={`w-4 h-4 ${activeBreachedScreens > 0 ? 'text-red-400 animate-bounce' : 'text-emerald-400'}`} />
+              <div>
+                <div className="tracking-wide">LIVE INCIDENT & THREAT FEED</div>
+                <div className="text-[9px] text-slate-400 font-normal">
+                  {alerts.length} TOTAL LOGS STORED IN DB
+                </div>
+              </div>
             </div>
-            <div className="flex items-center gap-1.5 text-[10px] font-mono text-slate-400">
-              <span className="flex items-center gap-1">
-                <span className="w-2 h-2 rounded-full bg-red-500 animate-ping"></span>
-                <span className="text-red-400 font-bold">{alerts.length} ACTIVE</span>
+            <div className="flex items-center gap-1.5 text-[10px] font-mono">
+              <span className={`px-2 py-0.5 rounded border flex items-center gap-1 font-bold ${
+                activeBreachedScreens > 0 
+                  ? 'bg-red-950/90 border-red-500 text-red-300' 
+                  : 'bg-emerald-950/80 border-emerald-600 text-emerald-300'
+              }`}>
+                <span className={`w-2 h-2 rounded-full ${activeBreachedScreens > 0 ? 'bg-red-500 animate-ping' : 'bg-emerald-400'}`}></span>
+                <span>{activeBreachedScreens} / {cameras.length} SCREENS ACTIVE</span>
               </span>
+
+              {/* Clear Log Button */}
+              <button
+                onClick={handleClearAlerts}
+                title="Clear all stored incident logs from SQLite database"
+                className="px-2 py-0.5 rounded bg-slate-800 hover:bg-red-900/70 text-slate-300 hover:text-red-200 border border-slate-700 hover:border-red-500/70 transition flex items-center gap-1 text-[9px] font-bold"
+              >
+                <Trash2 className="w-3 h-3 text-slate-400 hover:text-red-300" />
+                <span>CLEAR</span>
+              </button>
+
               {connectionStatus === 'connected' && (
                 <span className="px-1.5 py-0.5 rounded bg-emerald-950/80 text-emerald-300 border border-emerald-600 text-[9px] font-bold">
                   WS LIVE
@@ -954,6 +1216,162 @@ export default function CommandCenterDashboard({ onSelectAlert }) {
         </section>
 
       </main>
+
+      {/* TACTICAL VIDEO REPOSITORY MODAL */}
+      {videoLibraryOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+          <div className="bg-[#0b1120] border border-slate-700/90 rounded-xl shadow-2xl max-w-5xl w-full max-h-[88vh] flex flex-col overflow-hidden animate-in fade-in zoom-in duration-200">
+            
+            {/* Modal Header */}
+            <div className="px-5 py-3.5 bg-slate-900 border-b border-slate-700/80 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-indigo-950 border border-indigo-500/50 text-indigo-400">
+                  <Film className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-sm font-mono font-bold text-white tracking-wider">TACTICAL VIDEO REPOSITORY</h2>
+                    <span className="px-1.5 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-700 text-[10px] font-mono font-bold">
+                      {availableVideos.length} FEEDS FROM AI_ENGINE/MEDIA
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Select any recorded border corridor feed to assign to screen: <span className="text-amber-300 font-mono font-bold">{currentCam.name}</span>
+                  </p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setVideoLibraryOpen(false)}
+                className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Search & Category Filter Bar */}
+            <div className="p-3.5 bg-slate-900/60 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3 shrink-0">
+              <div className="relative flex-1 min-w-[240px]">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={videoSearchQuery}
+                  onChange={(e) => setVideoSearchQuery(e.target.value)}
+                  placeholder="Search tactical clips by sector, target, terrain..."
+                  className="w-full bg-slate-950 border border-slate-700 rounded-lg pl-9 pr-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500 font-mono"
+                />
+              </div>
+
+              {/* Category Filters */}
+              <div className="flex items-center gap-1.5 overflow-x-auto text-[11px] font-mono">
+                {['ALL', 'INTRUSION', 'RIVERINE', 'SNOW_PASS', 'VEHICLE', 'ANIMAL', 'ENVIRONMENTAL'].map(cat => (
+                  <button
+                    key={cat}
+                    onClick={() => setVideoCategoryFilter(cat)}
+                    className={`px-2.5 py-1 rounded-md border transition whitespace-nowrap ${
+                      videoCategoryFilter === cat 
+                        ? 'bg-indigo-600 text-white border-indigo-400 font-bold shadow' 
+                        : 'bg-slate-800/80 text-slate-400 border-slate-700 hover:text-slate-200'
+                    }`}
+                  >
+                    {cat === 'ALL' ? 'ALL FEEDS' : cat.replace('_', ' ')}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Video Grid */}
+            <div className="flex-1 overflow-y-auto p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+              {availableVideos
+                .filter(v => {
+                  const matchesCat = videoCategoryFilter === 'ALL' || (v.category || '').toUpperCase() === videoCategoryFilter;
+                  const matchesSearch = !videoSearchQuery || 
+                    (v.title || '').toLowerCase().includes(videoSearchQuery.toLowerCase()) ||
+                    (v.filename || '').toLowerCase().includes(videoSearchQuery.toLowerCase()) ||
+                    (v.desc || '').toLowerCase().includes(videoSearchQuery.toLowerCase());
+                  return matchesCat && matchesSearch;
+                })
+                .map(v => {
+                  const isSelected = (currentCam.videoSrc || '').includes(v.filename);
+                  return (
+                    <div 
+                      key={v.id || v.filename}
+                      className={`flex flex-col bg-slate-900/90 border rounded-xl overflow-hidden transition hover:shadow-xl ${
+                        isSelected ? 'border-indigo-500 ring-1 ring-indigo-500' : 'border-slate-800 hover:border-slate-700'
+                      }`}
+                    >
+                      {/* Video Preview */}
+                      <div className="relative aspect-video bg-black flex items-center justify-center overflow-hidden group">
+                        <video 
+                          src={v.url || `/videos/${v.filename}`} 
+                          muted 
+                          loop 
+                          playsInline 
+                          className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+                          onMouseEnter={e => e.currentTarget.play().catch(() => {})}
+                          onMouseLeave={e => {
+                            e.currentTarget.pause();
+                            e.currentTarget.currentTime = 0;
+                          }}
+                        />
+                        <div className="absolute top-2 left-2 z-10 px-2 py-0.5 rounded bg-black/75 border border-slate-700 text-[10px] font-mono text-slate-300">
+                          {v.badge || 'SURVEILLANCE'}
+                        </div>
+                        {isSelected && (
+                          <div className="absolute top-2 right-2 z-10 px-2 py-0.5 rounded bg-indigo-600 text-white text-[10px] font-mono font-bold flex items-center gap-1">
+                            <Check className="w-3 h-3" /> ACTIVE ON SCREEN
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Video Info */}
+                      <div className="p-3 flex-1 flex flex-col justify-between space-y-2">
+                        <div>
+                          <h3 className="text-xs font-mono font-bold text-slate-200 leading-snug line-clamp-1">
+                            {v.title}
+                          </h3>
+                          <p className="text-[10px] text-slate-400 mt-1 line-clamp-2">
+                            {v.desc || v.filename}
+                          </p>
+                        </div>
+
+                        <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between">
+                          <span className="text-[10px] font-mono text-slate-500">
+                            {v.size_mb ? `${v.size_mb} MB` : 'MP4 FEED'}
+                          </span>
+                          <button
+                            onClick={() => handleAssignVideoToCam(activeCam, v.url || `/videos/${v.filename}`)}
+                            className={`px-2.5 py-1 rounded text-[10px] font-mono font-bold transition flex items-center gap-1 ${
+                              isSelected 
+                                ? 'bg-emerald-950 text-emerald-300 border border-emerald-700 cursor-default'
+                                : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-md'
+                            }`}
+                          >
+                            <Play className="w-3 h-3" />
+                            <span>{isSelected ? 'LOADED' : `DEPLOY TO ${currentCam.id.toUpperCase()}`}</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="px-5 py-3 bg-slate-900 border-t border-slate-700 flex items-center justify-between text-xs font-mono text-slate-400 shrink-0">
+              <div>
+                Showing all 21 tactical border surveillance recordings from <code className="text-indigo-300 font-mono">ai_engine/media</code>
+              </div>
+              <button
+                onClick={() => setVideoLibraryOpen(false)}
+                className="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded border border-slate-700 transition"
+              >
+                CLOSE ARCHIVE
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
     </div>
   );
 }

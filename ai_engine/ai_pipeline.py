@@ -26,13 +26,32 @@ VIDEO_PRESETS = {
     "dog": os.path.join(MEDIA_DIR, "Stray_dog_crosses_border_fence_202608292240.mp4"),
     "animal": os.path.join(MEDIA_DIR, "Stray_dog_crosses_border_fence_202608292240.mp4"),
 
-    "3": os.path.join(MEDIA_DIR, "WhatsApp Video 2026-09-01 at 8.10.04 PM.mp4"),
+    "3": os.path.join(MEDIA_DIR, "Figure_walking_near_border_river_202608292310.mp4"),
+    "river": os.path.join(MEDIA_DIR, "Figure_walking_near_border_river_202608292310.mp4"),
     "fence": os.path.join(MEDIA_DIR, "WhatsApp Video 2026-09-01 at 8.10.04 PM.mp4"),
-    "river": os.path.join(MEDIA_DIR, "WhatsApp Video 2026-09-01 at 8.10.04 PM.mp4"),
+
+    "4": os.path.join(MEDIA_DIR, "Figure_crawling_near_border_fence_202608292307.mp4"),
+    "crawl": os.path.join(MEDIA_DIR, "Figure_crawling_near_border_fence_202608292307.mp4"),
+    "creep": os.path.join(MEDIA_DIR, "Person_creeps_toward_border_line_202608292252.mp4"),
+    "snow": os.path.join(MEDIA_DIR, "Person_walking_snow_mountain_pass_202608292246.mp4"),
+    "patrol": os.path.join(MEDIA_DIR, "Patrol_vehicle_driving_along_boundary_202608292231.mp4"),
+    "wind": os.path.join(MEDIA_DIR, "Wind_blowing_over_empty_path_202608292253.mp4"),
+    "track": os.path.join(MEDIA_DIR, "Figure_walking_along_border_track_202608292308.mp4"),
+    "muddy": os.path.join(MEDIA_DIR, "Figure_walking_on_muddy_track_202608292308.mp4"),
 
     "0": 0,
     "webcam": 0
 }
+
+# Dynamically index every video in media folder into presets
+if os.path.exists(MEDIA_DIR):
+    for fname in os.listdir(MEDIA_DIR):
+        if fname.endswith((".mp4", ".avi", ".mkv", ".mov")):
+            fpath = os.path.join(MEDIA_DIR, fname)
+            VIDEO_PRESETS[fname] = fpath
+            VIDEO_PRESETS[fname.lower()] = fpath
+            stem = os.path.splitext(fname)[0].lower()
+            VIDEO_PRESETS[stem] = fpath
 
 def resolve_video_source(source_arg):
     s = str(source_arg).strip().lower()

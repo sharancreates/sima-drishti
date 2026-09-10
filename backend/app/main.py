@@ -91,6 +91,10 @@ app.add_middleware(
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
+MEDIA_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "ai_engine", "media"))
+if os.path.exists(MEDIA_DIR):
+    app.mount("/media", StaticFiles(directory=MEDIA_DIR), name="media")
+
 class ConnectionManager:
     def __init__(self):
         self.active_connections: List[WebSocket] = []
@@ -404,6 +408,58 @@ def get_alerts(skip: int = 0, limit: int = 50, db: Session = Depends(get_db)):
             timestamp=a.timestamp.isoformat()
         ))
     return out
+ 
+@app.delete("/alerts")
+async def clear_all_alerts(db: Session = Depends(get_db)):
+    deleted_count = db.query(AlertLog).delete()
+    db.commit()
+    await manager.broadcast({"event_type": "ALERTS_CLEARED", "deleted_count": deleted_count})
+    return {"status": "SUCCESS", "message": f"Cleared {deleted_count} alerts", "deleted_count": deleted_count}
+
+@app.get("/videos")
+def list_available_videos():
+    videos = []
+    if os.path.exists(MEDIA_DIR):
+        for f in sorted(os.listdir(MEDIA_DIR)):
+            if f.endswith((".mp4", ".avi", ".mkv", ".mov")):
+                full_path = os.path.join(MEDIA_DIR, f)
+                size_mb = round(os.path.getsize(full_path) / (1024 * 1024), 2)
+                
+                lower_f = f.lower()
+                if "river" in lower_f:
+                    category = "RIVERINE"
+                    badge = "🌊 Riverine Sector"
+                elif "snow" in lower_f or "snowy" in lower_f:
+                    category = "SNOW_PASS"
+                    badge = "🏔️ Mountain Snow Pass"
+                elif "dog" in lower_f or "animal" in lower_f:
+                    category = "ANIMAL"
+                    badge = "🐾 Wildlife Filter"
+                elif "vehicle" in lower_f or "patrol" in lower_f:
+                    category = "VEHICLE"
+                    badge = "🚗 Border Patrol Unit"
+                elif "wind" in lower_f or "grass" in lower_f or "empty" in lower_f:
+                    category = "ENVIRONMENTAL"
+                    badge = "💨 Environmental Wind"
+                else:
+                    category = "INTRUSION"
+                    badge = "🚨 Tactical Intrusion"
+
+                clean_title = f.replace("_", " ").replace(".mp4", "")
+                if "WhatsApp Video" in clean_title:
+                    clean_title = "Tactical Border Breach (" + clean_title.split("at")[-1].strip() + ")"
+                
+                videos.append({
+                    "id": f,
+                    "filename": f,
+                    "title": clean_title,
+                    "category": category,
+                    "badge": badge,
+                    "url": f"/videos/{f}",
+                    "media_url": f"/media/{f}",
+                    "size_mb": size_mb
+                })
+    return videos
 
 @app.post("/dispatch", response_model=DispatchResponse)
 async def dispatch_unit(
