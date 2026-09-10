@@ -73,6 +73,8 @@ API_KEY = os.getenv("API_KEY", "sima-drishti-secure-key-2026")
 STREAM_ENDPOINT = os.getenv("STREAM_ENDPOINT", "http://127.0.0.1:8000/stream/frame")
 
 TARGET_CLASSES = {0: "person", 1: "bicycle", 2: "car", 3: "motorcycle", 7: "truck", 16: "dog"}
+THREAT_CLASSES = {"person", "car", "truck", "motorcycle", "bicycle"}
+WILDLIFE_CLASSES = {"dog", "cat", "bird", "horse", "sheep", "cow"}
 
 ZONE_COORDINATE_RATIOS = [
     (0.08, 0.30),
@@ -265,15 +267,19 @@ def run_pipeline(source="1", camera_id="cam-04", conf_threshold=0.25, imgsz=640)
                         raw_class = TARGET_CLASSES.get(cls_id, "unknown")
                         obj_label = "person" if raw_class in ("person", "bicycle", "motorcycle") else raw_class
 
+                        is_threat = (obj_label.lower() in THREAT_CLASSES)
+                        is_wildlife = (obj_label.lower() in WILDLIFE_CLASSES or "dog" in obj_label.lower())
+                        is_breach = bool(in_zone and is_threat)
+
                         payload = {
                             "object_class": obj_label,
                             "confidence": float(round(float(conf), 2)),
                             "bbox": [int(x1), int(y1), int(x2), int(y2)],
                             "track_id": int(track_id),
-                            "in_zone": bool(in_zone),
+                            "in_zone": is_breach,
                             "zone_id": assigned_zone,
                             "camera_id": camera_id,
-                            "frame_image": frame_b64,
+                            "frame_image": frame_b64 if is_breach else None,
                             "timestamp": int(time.time())
                         }
                         try:
@@ -287,9 +293,21 @@ def run_pipeline(source="1", camera_id="cam-04", conf_threshold=0.25, imgsz=640)
             cv2.polylines(frame, [poly_np], isClosed=True, color=(0, 0, 255), thickness=2)
             for bbox, conf, cls_id, track_id, in_zone, obj_class in active_detections:
                 x1, y1, x2, y2 = map(int, bbox)
-                box_color = (0, 0, 255) if in_zone else (0, 255, 0)
+                is_threat = (obj_class.lower() in THREAT_CLASSES)
+                is_wildlife = (obj_class.lower() in WILDLIFE_CLASSES or "dog" in obj_class.lower())
+
+                if in_zone and is_threat:
+                    box_color = (0, 0, 255)  # Red for human/vehicle breach
+                    tag = " [BREACH]"
+                elif is_wildlife:
+                    box_color = (0, 215, 255) if in_zone else (0, 255, 0)  # Amber for filtered wildlife
+                    tag = " [WILDLIFE - FILTERED]" if in_zone else " [ANIMAL]"
+                else:
+                    box_color = (0, 255, 0)  # Green for non-breaching
+                    tag = ""
+
                 cv2.rectangle(frame, (x1, y1), (x2, y2), box_color, 2)
-                cv2.putText(frame, f"ID:{track_id} {obj_class} {'[BREACH]' if in_zone else ''}",
+                cv2.putText(frame, f"ID:{track_id} {obj_class}{tag}",
                             (x1, max(18, y1 - 8)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, box_color, 2)
 
             status_text = "CLAHE: ACTIVE" if was_enhanced else "CLAHE: OFF"
@@ -322,7 +340,7 @@ ALL_CAMERAS_PLAN = [
     {
         "cam_id": "cam-04",
         "name": "CAM-04 · NORTH PERIMETER",
-        "source": VIDEO_PRESETS["1"],
+        "source": VIDEO_PRESETS["breach"],
         "zone_id": "ZONE_A",
         "zone_ratios": [(0.15, 0.40), (0.85, 0.40), (0.95, 0.90), (0.05, 0.90)],
         "start_offset": 0
@@ -330,7 +348,7 @@ ALL_CAMERAS_PLAN = [
     {
         "cam_id": "cam-02",
         "name": "CAM-02 · FENCE BRAVO",
-        "source": VIDEO_PRESETS["2"],
+        "source": VIDEO_PRESETS["dog"],
         "zone_id": "ZONE_BRAVO",
         "zone_ratios": [(0.10, 0.48), (0.90, 0.48), (0.95, 0.92), (0.05, 0.92)],
         "start_offset": 0
@@ -338,7 +356,7 @@ ALL_CAMERAS_PLAN = [
     {
         "cam_id": "cam-03",
         "name": "CAM-03 · RIVERINE WATCH",
-        "source": VIDEO_PRESETS["3"],
+        "source": VIDEO_PRESETS["river"],
         "zone_id": "ZONE_RIVERINE",
         "zone_ratios": [(0.05, 0.20), (0.95, 0.20), (0.98, 0.95), (0.02, 0.95)],
         "start_offset": 0
@@ -346,7 +364,7 @@ ALL_CAMERAS_PLAN = [
     {
         "cam_id": "cam-01",
         "name": "CAM-01 · GATE ALPHA",
-        "source": VIDEO_PRESETS["1"],
+        "source": VIDEO_PRESETS["crawl"],
         "zone_id": "ZONE_GATEWAY",
         "zone_ratios": [(0.12, 0.38), (0.88, 0.38), (0.95, 0.92), (0.05, 0.92)],
         "start_offset": 0
@@ -441,15 +459,19 @@ def camera_stream_worker(cam_cfg, stop_event, imgsz=640, conf_threshold=0.25):
                     raw_class = TARGET_CLASSES.get(cls_id, "unknown")
                     obj_label = "person" if raw_class in ("person", "bicycle", "motorcycle") else raw_class
 
+                    is_threat = (obj_label.lower() in THREAT_CLASSES)
+                    is_wildlife = (obj_label.lower() in WILDLIFE_CLASSES or "dog" in obj_label.lower())
+                    is_breach = bool(in_zone and is_threat)
+
                     payload = {
                         "object_class": obj_label,
                         "confidence": float(round(float(conf), 2)),
                         "bbox": [int(x1), int(y1), int(x2), int(y2)],
                         "track_id": int(track_id),
-                        "in_zone": bool(in_zone),
+                        "in_zone": is_breach,
                         "zone_id": zone_id,
                         "camera_id": cam_id,
-                        "frame_image": frame_b64,
+                        "frame_image": frame_b64 if is_breach else None,
                         "timestamp": int(time.time())
                     }
                     try:
@@ -463,9 +485,21 @@ def camera_stream_worker(cam_cfg, stop_event, imgsz=640, conf_threshold=0.25):
         cv2.polylines(frame, [poly_np], isClosed=True, color=(0, 0, 255), thickness=2)
         for bbox, conf, cls_id, track_id, in_zone, obj_class in active_detections:
             x1, y1, x2, y2 = map(int, bbox)
-            box_color = (0, 0, 255) if in_zone else (0, 255, 0)
+            is_threat = (obj_class.lower() in THREAT_CLASSES)
+            is_wildlife = (obj_class.lower() in WILDLIFE_CLASSES or "dog" in obj_class.lower())
+
+            if in_zone and is_threat:
+                box_color = (0, 0, 255)  # Red for real human/vehicle breach
+                tag = " [BREACH]"
+            elif is_wildlife:
+                box_color = (0, 215, 255) if in_zone else (0, 255, 0)  # Amber for filtered wildlife
+                tag = " [WILDLIFE - FILTERED]" if in_zone else " [ANIMAL]"
+            else:
+                box_color = (0, 255, 0)  # Green for non-breaching
+                tag = ""
+
             cv2.rectangle(frame, (x1, y1), (x2, y2), box_color, 2)
-            cv2.putText(frame, f"ID:{track_id} {obj_class} {'[BREACH]' if in_zone else ''}",
+            cv2.putText(frame, f"ID:{track_id} {obj_class}{tag}",
                         (x1, max(18, y1 - 8)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, box_color, 2)
 
         status_text = "CLAHE: ACTIVE" if was_enhanced else "CLAHE: OFF"
